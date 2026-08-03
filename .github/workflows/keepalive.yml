@@ -1,0 +1,21 @@
+name: Supabase keep-alive
+
+# Mantiene attivo il progetto Supabase (piano gratuito) evitando la pausa
+# dopo 7 giorni di inattività. Fa un piccolo "ping" al database ogni 2 giorni.
+# Non serve configurare nulla: la chiave anon è pubblica per progettazione.
+
+on:
+  schedule:
+    - cron: '0 6 */2 * *'      # ogni 2 giorni alle 06:00 UTC
+  workflow_dispatch:            # permette anche l'avvio manuale dal sito GitHub
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase (mantiene attivo il progetto)
+        run: |
+          curl -sS "https://vmmkjmljsliuczskrlfi.supabase.co/rest/v1/records?select=collection&limit=1" \
+            -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZtbWtqbWxqc2xpdWN6c2tybGZpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0OTY1NzYsImV4cCI6MjEwMTA3MjU3Nn0.eD96Hcd4cInU3jwnuoGASGUC4-It2ZhT4fDJ9aP5708" \
+            -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZtbWtqbWxqc2xpdWN6c2tybGZpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0OTY1NzYsImV4cCI6MjEwMTA3MjU3Nn0.eD96Hcd4cInU3jwnuoGASGUC4-It2ZhT4fDJ9aP5708" \
+            -o /dev/null -w "Ping eseguito - risposta HTTP %{http_code}\n"

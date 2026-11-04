@@ -4334,7 +4334,8 @@ function stampaMovimentiBanca(){
   openPreview({type:'registro',reg,title:'Movimenti bancari',filename:'Movimenti_bancari',email:{to:'',subject:'',body:''}},html);
 }
 function renderBanca(c){
-  setActions(`<button class="btn" onclick="bancaCategorieDialog()">${svg(IC.card,1.6)} Categorie</button>
+  setActions(`<button class="btn" onclick="bancaRiconciliaAutoBtn()">${svg(IC.card,1.6)} Riconcilia automaticamente</button>
+    <button class="btn" onclick="bancaCategorieDialog()">${svg(IC.card,1.6)} Categorie</button>
     <button class="btn" onclick="stampaMovimentiBanca()">${svg(IC.print)} Stampa<span id="banca-sel-count">${bancaRowSel.size?' ('+bancaRowSel.size+')':''}</span></button>
     <label class="btn primary" style="cursor:pointer">${svg(IC.plus)} Importa movimenti (XLS BCC)
       <input type="file" accept=".xls,.csv,.txt,.tsv" style="display:none" onchange="bancaImport(this)"></label>`);
@@ -4544,6 +4545,46 @@ function cartaCercaFatt(q){const box=document.getElementById('carta-ris');if(!bo
 function cartaUpdSum(){const t=S.speseCarta.find(x=>x.id===window._cartaTxId);const el=document.getElementById('carta-sum');if(!t||!el)return;let s=0;cartaSel.forEach(fid=>{const f=S.fattureEl.find(x=>x.id===fid);if(f)s+=num(f.totale);});const diff=Math.abs(round2(s-t.importo));el.innerHTML=`Selezionate: € ${eur(s)} / Spesa: € ${eur(t.importo)} — differenza € ${eur(diff)} ${diff<0.01&&cartaSel.size?'✓':''}`;}
 function cartaConferma(id){const t=S.speseCarta.find(x=>x.id===id);if(!t)return true;const ids=[...cartaSel];if(!ids.length){toast('Seleziona almeno una fattura');return false;}ids.forEach(fid=>{const f=S.fattureEl.find(x=>x.id===fid);if(f){f.pagata=true;f.dataPag=t.dataRegistr||t.dataAcquisto;f.movimentoId='carta:'+t.id;}});t.riconciliata=true;t.fatturaIds=ids;logAction('Spesa carta riconciliata',dmy(t.dataAcquisto)+' · '+ids.length+' fattura/e');cartaLinkBanca();persist();render();toast('Spesa riconciliata');return true;}
 function cartaAnnulla(id){const t=S.speseCarta.find(x=>x.id===id);if(!t)return;(t.fatturaIds||[]).forEach(fid=>{const f=S.fattureEl.find(x=>x.id===fid);if(f&&f.movimentoId==='carta:'+t.id){f.pagata=false;f.dataPag='';f.movimentoId='';}});t.riconciliata=false;t.fatturaIds=[];cartaLinkBanca();persist();render();toast('Riconciliazione annullata');}
+/* Riconciliazione automatica CONSERVATIVA dei movimenti banca.
+   Riconcilia SOLO i movimenti con un unico abbinamento certo: una fattura il cui residuo ha importo esatto
+   (differenza < 0,01) e nome corrispondente (punteggio ≥ 120). Lascia intatti ambigui, cumulativi, piccole
+   differenze (abbuono da decidere) e movimenti senza fattura. Sequenziale: una fattura appena riconciliata
+   non è più candidata per i movimenti successivi. */
+function bancaRiconciliaAuto(){
+  const rep={done:0,ambigui:0,cumulativi:0,piccoleDiff:0,nessunMatch:0,voci:[]};
+  (S.movimentiBanca||[]).forEach(m=>{
+    if(m.riconciliato||m.categoria||m.cartaMese)return;
+    if(bancaAutoCat(m)==='Carta di credito')return; // gli addebiti carta si gestiscono nella sezione Carta
+    const absImp=round2(Math.abs(m.importo));
+    const cands=bancaCandidati(m);
+    const exact=cands.filter(c=>Math.abs(feResiduo(c.f)-absImp)<0.01&&c.score>=120);
+    if(exact.length===1){
+      const f=exact[0].f;const imp=round2(feResiduo(f));
+      f.alloc=f.alloc||[];f.alloc.push({movId:m.id,imp,data:m.dataContabile});f.movimentoId=m.id;feSyncPagata(f);
+      m.riconciliato=true;m.fatturaIds=[f.id];m.categoria='';m.residuoRic=round2(absImp-imp);
+      rep.done++;rep.voci.push({data:m.dataContabile,imp:m.importo,fnum:f.numero,nome:f.controparteNome});
+    }else if(exact.length>1){rep.ambigui++;}
+    else{
+      const combos=bancaCombinazioni(m);
+      const exactCombo=combos.filter(cb=>Math.abs(cb.sum-absImp)<0.01);
+      const near=cands.filter(c=>c.score>=120);
+      if(exactCombo.length>=1)rep.cumulativi++;
+      else if(near.length>=1)rep.piccoleDiff++;
+      else rep.nessunMatch++;
+    }
+  });
+  return rep;
+}
+function bancaRiconciliaAutoBtn(){
+  const r=bancaRiconciliaAuto();
+  if(r.done)logAction('Riconciliazione automatica',r.done+' movimenti');
+  persist();render();
+  const left=r.ambigui+r.cumulativi+r.piccoleDiff+r.nessunMatch;
+  const body=`<div class="note">${svg(IC.card)}<div><b>${r.done}</b> movimenti riconciliati automaticamente (abbinamento univoco, importo esatto sul residuo e nome corrispondente).${left?` <b>${left}</b> lasciati da controllare a mano, come richiesto.`:''}</div></div>
+    ${r.done?`<div class="section-label">Riconciliati (${r.done})</div><table style="width:100%"><tbody>${r.voci.map(v=>`<tr><td class="sub" style="white-space:nowrap">${v.data?dmy(v.data):'—'}</td><td>${esc(v.nome||'')} · N.${esc(v.fnum||'?')}</td><td class="num" style="white-space:nowrap">€ ${eur(Math.abs(v.imp))}</td></tr>`).join('')}</tbody></table>`:'<div class="sub">Nessun nuovo abbinamento certo trovato.</div>'}
+    ${left?`<div class="section-label" style="margin-top:12px">Lasciati da controllare (${left})</div><div class="sub" style="line-height:1.6">• <b>${r.ambigui}</b> ambigui (più fatture dello stesso importo)<br>• <b>${r.cumulativi}</b> cumulativi (somma di più fatture)<br>• <b>${r.piccoleDiff}</b> con piccola differenza da decidere (abbuono)<br>• <b>${r.nessunMatch}</b> senza fattura corrispondente</div>`:''}`;
+  openModal('Riconciliazione automatica',body,()=>true,{wide:true,submitLabel:'Chiudi'});
+}
 /* Abbina automaticamente una spesa carta alla fattura passiva con importo ESATTO (e nome compatibile se più di una). Conservativo: solo abbinamenti univoci. */
 function cartaMatchFattura(t){
   const abs=round2(t.importo); const nd=bNorm(t.descrizione);

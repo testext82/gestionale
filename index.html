@@ -4722,9 +4722,67 @@ function feFiltra(){
   return rows.sort((a,b)=>(b.data||'').localeCompare(a.data||''));
 }
 function feAnni(){const s=new Set(S.fattureEl.map(f=>String(f.data||'').slice(0,4)).filter(Boolean));s.add(String(new Date().getFullYear()));return [...s].sort().reverse();}
+/* Inserimento manuale di una fattura (es. fatture che arrivano solo in PDF, come Illumia).
+   Costruisce un record compatibile con quelli importati da XML, così si riconcilia e si somma come gli altri. */
+function feBuildRecord(d){
+  const cedD=String(d.contropartePiva||'').replace(/\D/g,'');
+  const mia=feMiaPiva();
+  const attiva=d.tipo==='attiva';
+  const imp=round2(num(d.imponibile)), iva=round2(num(d.imposta));
+  const tot=round2((d.totale!=null&&d.totale!=='')?num(d.totale):imp+iva);
+  const cedenteP=attiva?mia:cedD, cessP=attiva?cedD:mia;
+  return {id:uid(),
+    chiave:(attiva?'A':'P')+'|'+cedenteP+'|'+cessP+'|'+(d.numero||'')+'|'+(d.data||''),
+    fileName:d.fileName||'', tipo:attiva?'attiva':'passiva', numero:String(d.numero||''), data:d.data||'',
+    tipoDoc:d.tipoDoc||'TD01', controparteNome:d.controparteNome||'', contropartePiva:cedD,
+    imponibile:imp, imposta:iva, totale:tot,
+    aliquote:(imp>0||iva>0)?[{aliquota:iva>0?22:0,imponibile:imp,imposta:iva}]:[],
+    pagamenti:[], righe:[], pagata:false, dataPag:'', manuale:true,
+    scadenza:d.scadenza||''};
+}
+function feAddManuale(){
+  const oggi=today();
+  const body=`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="field"><label>Tipo</label><select id="fm-tipo"><option value="passiva">Passiva (ricevuta)</option><option value="attiva">Attiva (emessa)</option></select></div>
+      <div class="field"><label>Numero documento</label><input id="fm-numero" placeholder="es. 412503590142"></div>
+      <div class="field"><label>Controparte (fornitore/cliente)</label><input id="fm-nome" placeholder="es. ILLUMIA S.P.A."></div>
+      <div class="field"><label>P.IVA / C.F.</label><input id="fm-piva" placeholder="es. 02356770988"></div>
+      <div class="field"><label>Data documento</label><input id="fm-data" type="date" value="${oggi}"></div>
+      <div class="field"><label>Scadenza (facolt.)</label><input id="fm-scad" type="date"></div>
+      <div class="field"><label>Imponibile €</label><input id="fm-imp" type="number" step="0.01" oninput="feManualeCalc(false)"></div>
+      <div class="field"><label>IVA €</label><input id="fm-iva" type="number" step="0.01" oninput="feManualeCalc(true)"></div>
+      <div class="field"><label>Totale €</label><input id="fm-tot" type="number" step="0.01"></div>
+      <div class="field"><label>File PDF (facolt.)</label><input id="fm-file" placeholder="nome del file PDF"></div>
+    </div>
+    <div class="sub" style="margin-top:6px">Inserendo l'imponibile, IVA (22%) e totale si calcolano in automatico; puoi correggerli. Il totale è obbligatorio.</div>`;
+  openModal('Inserisci fattura manualmente',body,()=>feSalvaManuale(),{wide:true,submitLabel:'Aggiungi fattura'});
+}
+function feManualeCalc(fromIva){
+  const impEl=document.getElementById('fm-imp'),ivaEl=document.getElementById('fm-iva'),totEl=document.getElementById('fm-tot');
+  if(!impEl||!ivaEl||!totEl)return;
+  const imp=parseFloat(impEl.value)||0;
+  if(!fromIva) ivaEl.value=(Math.round(imp*22)/100).toFixed(2);
+  const iva=parseFloat(ivaEl.value)||0;
+  totEl.value=(Math.round((imp+iva)*100)/100).toFixed(2);
+}
+function feSalvaManuale(){
+  const g=id=>document.getElementById(id);
+  const numero=(g('fm-numero').value||'').trim(), data=g('fm-data').value, tot=g('fm-tot').value;
+  if(!numero||!data){toast('Inserisci almeno numero e data');return false;}
+  if(tot===''||num(tot)<=0){toast('Inserisci il totale');return false;}
+  const rec=feBuildRecord({tipo:g('fm-tipo').value,numero,data,controparteNome:(g('fm-nome').value||'').trim(),
+    contropartePiva:g('fm-piva').value,imponibile:g('fm-imp').value,imposta:g('fm-iva').value,totale:tot,
+    fileName:g('fm-file').value,scadenza:g('fm-scad').value});
+  if(S.fattureEl.some(x=>x.chiave===rec.chiave)){toast('Fattura già presente');return false;}
+  S.fattureEl.push(rec);
+  logAction('Fattura inserita manualmente',rec.numero+' · '+(rec.controparteNome||''));
+  persist();render();toast('Fattura aggiunta');return true;
+}
 function renderFattureEl(c){
   setActions(`<label class="btn primary" style="cursor:pointer">${svg(IC.plus)} Importa XML / ZIP
       <input type="file" multiple accept=".xml,.zip,.p7m" style="display:none" onchange="feImport(this)"></label>
+    <button class="btn" onclick="feAddManuale()">${svg(IC.plus)} Aggiungi manualmente (PDF)</button>
     ${S.fattureEl.length?`<button class="btn" onclick="stampaRegistroFE()">${svg(IC.print)} Registro</button>`:''}`);
   const rows=feFiltra();
   const att=rows.filter(f=>f.tipo==='attiva'),pas=rows.filter(f=>f.tipo==='passiva');
@@ -4773,7 +4831,7 @@ function renderFattureEl(c){
           <tbody>${rows.map(f=>`<tr id="fe-${f.id}" style="cursor:pointer" onclick="feDettaglio('${f.id}')">
             <td onclick="event.stopPropagation()"><input type="checkbox" ${feSel.has(f.id)?'checked':''} onchange="feToggleSel('${f.id}',this.checked)"></td>
             <td class="sub">${f.data?dmy(f.data):'—'}</td>
-            <td>${esc(f.numero||'—')}<div class="sub">${esc(FE_TIPODOC[f.tipoDoc]||f.tipoDoc||'')}</div></td>
+            <td>${esc(f.numero||'—')}<div class="sub">${esc(FE_TIPODOC[f.tipoDoc]||f.tipoDoc||'')}${f.manuale?' · <span style="color:var(--accent)">inserita a mano</span>':''}</div></td>
             <td><span class="pill ${f.tipo==='attiva'?'ok':'danger'}">${f.tipo==='attiva'?'Attiva':'Passiva'}</span></td>
             <td>${esc(f.controparteNome||'—')}<div class="sub">${esc(f.contropartePiva||'')}</div></td>
             <td class="num">€ ${eur(f.imponibile)}</td><td class="num">€ ${eur(f.imposta)}</td><td class="num strong">€ ${eur(f.totale)}</td>

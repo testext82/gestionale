@@ -4043,8 +4043,9 @@ function bancaFiltra(){
   if(filtriBanca.al)r=r.filter(m=>(m.dataContabile||'')<=filtriBanca.al);
   if(filtriBanca.tipo)r=r.filter(m=>m.tipo===filtriBanca.tipo);
   if(filtriBanca.stato==='ric')r=r.filter(m=>m.riconciliato);
-  if(filtriBanca.stato==='dar')r=r.filter(m=>!m.riconciliato&&!m.categoria);
-  if(filtriBanca.stato==='cat')r=r.filter(m=>!m.riconciliato&&m.categoria);
+  if(filtriBanca.stato==='dar')r=r.filter(m=>!m.riconciliato&&!m.categoria&&!m.fuoriArchivio);
+  if(filtriBanca.stato==='cat')r=r.filter(m=>!m.riconciliato&&m.categoria&&!m.fuoriArchivio);
+  if(filtriBanca.stato==='fuori')r=r.filter(m=>m.fuoriArchivio);
   const t=(searchTerm.banca||'').toLowerCase().trim();
   if(t)r=r.filter(m=>[m.causale,m.descrizione].join(' ').toLowerCase().includes(t));
   return r.sort((a,b)=>(b.dataContabile||'').localeCompare(a.dataContabile||''));
@@ -4261,6 +4262,11 @@ function bancaAnnullaRic(movId){
   m.riconciliato=false;m.fatturaIds=[];m.cartaMese='';m.bolloCarta=0;m.cartaIds=[];m.residuoRic=0;persist();render();toast('Riconciliazione annullata');
 }
 function bancaSetCat(id,cat){const m=S.movimentiBanca.find(x=>x.id===id);if(!m)return;m.categoria=cat;persist();render();}
+/* Stato "Fuori archivio": pagamento di una fattura non presente nel gestionale (es. ante 2025).
+   Il movimento risulta sistemato (verde), esce dai "da riconciliare" e NON genera abbuoni. */
+function bancaFuoriArchivio(id){const m=S.movimentiBanca.find(x=>x.id===id);if(!m)return;m.fuoriArchivio=true;m.categoria='';logAction('Movimento segnato fuori archivio',dmy(m.dataContabile)+' · € '+eur(Math.abs(m.importo)));persist();render();toast('Segnato: fattura non in archivio');}
+function bancaAnnullaFuoriArchivio(id){const m=S.movimentiBanca.find(x=>x.id===id);if(!m)return;m.fuoriArchivio=false;persist();render();toast('Riportato tra i da riconciliare');}
+function bancaFuoriArchivioSel(){const ids=[...bancaRowSel];if(!ids.length){toast('Seleziona dei movimenti');return;}let n=0;ids.forEach(id=>{const m=S.movimentiBanca.find(x=>x.id===id);if(m&&!m.riconciliato){m.fuoriArchivio=true;m.categoria='';n++;}});if(n)logAction('Movimenti segnati fuori archivio',n+' movimenti');bancaRowSel.clear();persist();render();toast(n+' movimenti segnati fuori archivio');}
 function bancaCatsSorted(){return [...(S.movBancaCategorie||[])].sort((a,b)=>String(a).localeCompare(String(b),'it',{sensitivity:'base'}));}
 let _bcatDel=-1;
 function bancaCategorieDialog(){
@@ -4343,11 +4349,12 @@ function renderBanca(c){
   const ent=rows.filter(m=>m.importo>0).reduce((s,m)=>s+m.importo,0);
   const usc=rows.filter(m=>m.importo<0).reduce((s,m)=>s-m.importo,0);
   const saldo=ent-usc;
-  const daRic=S.movimentiBanca.filter(m=>!m.riconciliato&&!m.categoria).length;
+  const daRic=S.movimentiBanca.filter(m=>!m.riconciliato&&!m.categoria&&!m.fuoriArchivio).length;
   const anni=bancaAnni();
   const MB=['','gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
   const mLabelBancaMese=m=>{const a=String(m).split('-');return a[1]?MB[+a[1]]+' '+a[0]:m;};
   const statoCell=m=>{
+    if(m.fuoriArchivio)return `<span class="pill ok">Fuori archivio</span><div class="sub">fattura non in archivio (ante 2025)</div>`;
     if(m.riconciliato){
       if(m.cartaMese){const lines=(m.cartaIds||[]).map(cid=>{const t=S.speseCarta.find(x=>x.id===cid);if(!t)return '';const invs=(t.fatturaIds||[]).map(fid=>{const f=S.fattureEl.find(x=>x.id===fid);return f?(esc(f.controparteNome||'—')+' · <span class="golink" onclick="event.stopPropagation();goHighlight(\'fattureEl\',\'fe-'+f.id+'\')">N.'+esc(f.numero||'?')+(f.data?' del '+dmy(f.data):'')+' ↗</span>'):'';}).filter(Boolean);if(invs.length)return invs.join('<br>');return `<span style="color:var(--warn)">${esc((t.descrizione||'spesa').slice(0,28))} · da ric.</span>`;}).filter(Boolean);return `<span class="pill ok">Riconciliato</span><div class="sub" style="line-height:1.4"><span class="golink" onclick="event.stopPropagation();cartaVaiSpese('${m.id}')">Carta ${esc(mLabelBancaMese(m.cartaMese))} ↗</span>${lines.length?'<br>'+lines.join('<br>'):''}</div>`;}
       const lk=(m.fatturaIds||[]).map(fid=>{const f=S.fattureEl.find(x=>x.id===fid);return f?`<span class="golink" onclick="event.stopPropagation();goHighlight('fattureEl','fe-${f.id}')">N.${esc(f.numero||'?')}${f.data?' del '+dmy(f.data):''} ↗</span>`:'';}).filter(Boolean).join(', ');
@@ -4366,15 +4373,21 @@ function renderBanca(c){
       <div class="stat"><div class="k">${svg(IC.card)} Da riconciliare</div><div class="strong" style="font-size:20px;margin-top:4px">${daRic}</div></div>
     </div>
     ${(()=>{const ab=abbuoniTot(filtriBanca.anno||'');return (ab.attivi>0.005||ab.passivi>0.005||ab.nVerif)?`<div class="note" style="margin-top:10px;cursor:pointer" onclick="abbuoniDialog('${filtriBanca.anno||''}')"><div><b>Abbuoni / arrotondamenti${filtriBanca.anno?' '+filtriBanca.anno:''}:</b> attivi (guadagni) € ${eur(ab.attivi)} · passivi (perdite) € ${eur(ab.passivi)} · <b style="color:var(--${ab.netto>=0?'ok':'danger'})">netto ${ab.netto<0?'−':'+'}€ ${eur(Math.abs(ab.netto))}</b>${ab.nVerif?` · <b style="color:var(--warn)">⚠ ${ab.nVerif} da verificare</b>`:''} · <span class="golink">vedi dettaglio ↗</span></div></div>`:'';})()}
+    ${(()=>{const fa=S.movimentiBanca.filter(m=>m.fuoriArchivio&&(!filtriBanca.anno||(m.dataContabile||'').slice(0,4)===filtriBanca.anno));if(!fa.length)return '';const tot=fa.reduce((s,m)=>s+Math.abs(num(m.importo)),0);return `<div class="note" style="margin-top:10px;cursor:pointer" onclick="filtriBanca.stato='fuori';render()"><div><b>Fuori archivio${filtriBanca.anno?' '+filtriBanca.anno:''}:</b> ${fa.length} pagamenti di fatture non in archivio (ante 2025) · totale € ${eur(round2(tot))} · <span class="golink">mostra ↗</span></div></div>`;})()}
     <div class="toolbar" style="flex-wrap:wrap;gap:8px">
       <div class="search">${svg(IC.search)}<input placeholder="Cerca causale, descrizione…" value="${esc(searchTerm.banca||'')}" data-sf="banca" oninput="searchTerm.banca=this.value;render()"></div>
       <select onchange="filtriBanca.anno=this.value;render()"><option value="">Tutti gli anni</option>${anni.map(a=>`<option ${filtriBanca.anno===a?'selected':''}>${a}</option>`).join('')}</select>
       <select onchange="filtriBanca.tipo=this.value;render()"><option value="">Entrate e uscite</option><option value="E" ${filtriBanca.tipo==='E'?'selected':''}>Solo entrate</option><option value="U" ${filtriBanca.tipo==='U'?'selected':''}>Solo uscite</option></select>
-      <select onchange="filtriBanca.stato=this.value;render()"><option value="">Tutti gli stati</option><option value="dar" ${filtriBanca.stato==='dar'?'selected':''}>Da riconciliare</option><option value="ric" ${filtriBanca.stato==='ric'?'selected':''}>Riconciliati</option><option value="cat" ${filtriBanca.stato==='cat'?'selected':''}>Categorizzati</option></select>
+      <select onchange="filtriBanca.stato=this.value;render()"><option value="">Tutti gli stati</option><option value="dar" ${filtriBanca.stato==='dar'?'selected':''}>Da riconciliare</option><option value="ric" ${filtriBanca.stato==='ric'?'selected':''}>Riconciliati</option><option value="cat" ${filtriBanca.stato==='cat'?'selected':''}>Categorizzati</option><option value="fuori" ${filtriBanca.stato==='fuori'?'selected':''}>Fuori archivio</option></select>
       <span class="sub" style="display:flex;align-items:center;gap:5px">Dal <input type="date" value="${filtriBanca.dal||''}" onchange="filtriBanca.dal=this.value;render()" style="padding:5px 7px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:inherit"></span>
       <span class="sub" style="display:flex;align-items:center;gap:5px">al <input type="date" value="${filtriBanca.al||''}" onchange="filtriBanca.al=this.value;render()" style="padding:5px 7px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:inherit"></span>
       ${(filtriBanca.anno||filtriBanca.tipo||filtriBanca.stato||filtriBanca.dal||filtriBanca.al||searchTerm.banca)?`<button class="btn sm" onclick="filtriBanca={anno:'',tipo:'',stato:'',cat:'',dal:'',al:''};searchTerm.banca='';render()">Azzera filtri</button>`:''}
     </div>
+    ${bancaRowSel.size?`<div class="toolbar" style="background:var(--accent-soft);border-radius:10px;padding:8px 12px;margin-bottom:10px">
+      <span class="strong">${bancaRowSel.size} selezionati</span><div style="flex:1"></div>
+      <button class="btn sm" onclick="bancaFuoriArchivioSel()">Segna fuori archivio</button>
+      <button class="btn sm ghost" onclick="bancaRowSel.clear();render()">Deseleziona</button>
+    </div>`:''}
     <div class="card">
       ${S.movimentiBanca.length===0
         ? emptyState('card','Nessun movimento bancario','Esporta i movimenti dall&rsquo;home banking BCC in formato "XLS GESTIONALE" e importali qui.',`<label class="btn primary" style="cursor:pointer">${svg(IC.plus)} Importa movimenti<input type="file" accept=".xls,.csv,.txt,.tsv" style="display:none" onchange="bancaImport(this)"></label>`)
@@ -4392,9 +4405,12 @@ function renderBanca(c){
             <td class="actions">
               ${m.riconciliato
                 ? `<div style="display:flex;gap:4px;align-items:center"><button class="btn sm ghost" style="flex:1" onclick="bancaAnnullaRic('${m.id}')">Annulla</button><button class="icon-btn sm danger" title="Elimina" onclick="bancaDelete('${m.id}')">${svg(IC.trash,1.9)}</button></div>`
+                : m.fuoriArchivio
+                ? `<div style="display:flex;gap:4px;align-items:center"><button class="btn sm ghost" style="flex:1" onclick="bancaAnnullaFuoriArchivio('${m.id}')" title="Riporta tra i da riconciliare">Annulla</button><button class="icon-btn sm danger" title="Elimina" onclick="bancaDelete('${m.id}')">${svg(IC.trash,1.9)}</button></div>`
                 : `<div style="display:flex;flex-direction:column;gap:4px">
                      <div style="display:flex;gap:4px;align-items:center"><button class="btn sm" style="flex:1;white-space:nowrap" onclick="${bancaAutoCat(m)==='Carta di credito'?'bancaRiconciliaCarta':'bancaRiconcilia'}('${m.id}')">${svg(IC.card,1.9)} Riconcilia</button><button class="icon-btn sm danger" title="Elimina" onclick="bancaDelete('${m.id}')">${svg(IC.trash,1.9)}</button></div>
                      <select onchange="bancaSetCat('${m.id}',this.value)" style="width:100%;max-width:100%"><option value="">— categoria —</option>${bancaCatsSorted().map(cat=>`<option ${m.categoria===cat?'selected':''}>${esc(cat)}</option>`).join('')}</select>
+                     <button class="btn sm ghost" style="width:100%;white-space:nowrap" onclick="bancaFuoriArchivio('${m.id}')" title="Pagamento di una fattura non presente nel gestionale (ante 2025)">Fattura non in archivio</button>
                    </div>`}
             </td></tr>`).join('')}</tbody></table>`}
     </div>`;
@@ -4553,7 +4569,7 @@ function cartaAnnulla(id){const t=S.speseCarta.find(x=>x.id===id);if(!t)return;(
 function bancaRiconciliaAuto(){
   const rep={done:0,ambigui:0,cumulativi:0,piccoleDiff:0,nessunMatch:0,voci:[]};
   (S.movimentiBanca||[]).forEach(m=>{
-    if(m.riconciliato||m.categoria||m.cartaMese)return;
+    if(m.riconciliato||m.categoria||m.cartaMese||m.fuoriArchivio)return;
     if(bancaAutoCat(m)==='Carta di credito')return; // gli addebiti carta si gestiscono nella sezione Carta
     const absImp=round2(Math.abs(m.importo));
     const cands=bancaCandidati(m);

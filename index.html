@@ -3992,7 +3992,11 @@ function bancaAutoCat(m){
   if(/CARTA DEL CREDITO COOPERATIVO|CARTA CREDITO COOPERATIVO/.test(caus))return 'Carta di credito';
   if(/\bCOMM\b.*(RICHIEST|INCASSO)/.test(caus))return 'Spese bancarie'; // commissione (abbreviata) richiesta incasso SEPA
   if(/CANONE|COMMISSION|IMPOSTA DI BOLLO|IMPOSTA BOLLO|SPESE TENUTA/.test(caus))return 'Spese bancarie';
+  if(/IMPOSTE E TASSE|DELEGA UNIFICATA|MODELLO F24|\bF24\b/.test(caus))return 'Imposte / Tasse';
+  if(/INTERESSI E COMPETENZE/.test(caus))return 'Interessi';
   if(/DIVIDEND/.test(caus))return 'Dividendi';
+  const descFull=bNorm(m.descrizione||'');
+  if(/FINANZIAMENTO SOCI/.test(descFull)||/FINANZIAMENT.* SOCI/.test(descFull))return 'Finanziamenti soci';
   if(/FILLEA|RITENUT[EA] SINDACAL|SINDACAL/.test(desc0))return 'Ritenute sindacali';
   if(/DIVIDEND/.test(desc0))return 'Dividendi';
   if(/STIPENDI/.test(desc0))return 'Stipendi / Compensi';
@@ -4584,7 +4588,15 @@ function bancaRiconciliaAuto(){
       const combos=bancaCombinazioni(m);
       const exactCombo=combos.filter(cb=>Math.abs(cb.sum-absImp)<0.01);
       const near=cands.filter(c=>c.score>=120);
-      if(exactCombo.length>=1)rep.cumulativi++;
+      if(exactCombo.length===1){
+        // abbinamento cumulativo CERTO: una spesa = somma esatta di più fatture dello stesso fornitore, univoco
+        const cb=exactCombo[0];let allocTot=0;
+        cb.fatture.forEach(f=>{const imp=round2(feResiduo(f));f.alloc=f.alloc||[];f.alloc.push({movId:m.id,imp,data:m.dataContabile});f.movimentoId=m.id;feSyncPagata(f);allocTot=round2(allocTot+imp);});
+        m.riconciliato=true;m.fatturaIds=cb.fatture.map(f=>f.id);m.categoria='';m.residuoRic=round2(absImp-allocTot);
+        rep.done++;rep.doneCumul=(rep.doneCumul||0)+1;
+        rep.voci.push({data:m.dataContabile,imp:m.importo,fnum:cb.fatture.map(f=>f.numero||'?').join(' + '),nome:(cb.fatture[0].controparteNome||'')+' (cumul. '+cb.fatture.length+')'});
+      }
+      else if(exactCombo.length>1)rep.cumulativi++;
       else if(near.length>=1)rep.piccoleDiff++;
       else rep.nessunMatch++;
     }

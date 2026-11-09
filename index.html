@@ -918,8 +918,8 @@ const NAV=[
   {id:'sicurezza',label:'Sicurezza e scadenze',ico:'shield',badge:()=>S.sicurezza.length+S.scadenze.length},
   {id:'rifornimenti',label:'Rifornimenti carburante',ico:'truck',badge:()=>S.rifornimenti.length},
   {id:'analisiCosti',label:'Analisi costi',ico:'card'},
-  {id:'banca',label:'Banca',ico:'card',beta:true,badge:()=>S.movimentiBanca.length},
-  {id:'cartaCredito',label:'Carta di credito',ico:'card',beta:true,badge:()=>S.speseCarta.length},
+  {id:'banca',label:'Banca',ico:'card',badge:()=>S.movimentiBanca.length},
+  {id:'cartaCredito',label:'Carta di credito',ico:'card',badge:()=>S.speseCarta.length},
   {id:'report',label:'Report e statistiche',ico:'dash'},
   {group:'Anagrafiche'},
   {id:'clienti',label:'Clienti',ico:'user',badge:()=>S.clienti.length},
@@ -4061,12 +4061,12 @@ function bancaAnni(){const s=new Set(S.movimentiBanca.map(m=>(m.dataContabile||'
 function fePagato(f){return round2((f.alloc||[]).reduce((s,a)=>s+num(a.imp),0));}
 function feResiduo(f){const rit=num(f.ritenuta||0);if(f.alloc&&f.alloc.length)return round2(num(f.totale)-fePagato(f)-rit);return f.pagata?0:round2(num(f.totale)-rit);}
 function feNetto(f){return (f.pagamenti&&f.pagamenti.length)?round2(f.pagamenti.reduce((s,p)=>s+num(p.importo),0)):0;}
-function feStato(f){if(f.saldoForzato)return 'saldata';if(f.alloc&&f.alloc.length)return feResiduo(f)<=0.005?'saldata':'parziale';return f.pagata?'saldata':'aperta';}
+function feStato(f){if(f.saldoForzato||num(f.ritenuta||0)>0.005)return 'saldata';if(f.alloc&&f.alloc.length)return feResiduo(f)<=0.005?'saldata':'parziale';return f.pagata?'saldata':'aperta';}
 function feSyncPagata(f){const sal=feStato(f)==='saldata';f.pagata=sal;if(sal){if(!f.dataPag){const a=(f.alloc||[]);f.dataPag=(a.length&&a[a.length-1].data)||today();}}else{f.dataPag='';}}
 function feStatoCell(f){
   const st=feStato(f);
-  if(st==='saldata'){const ai=feAbbuonoInfo(f);const abTxt=ai?(' · '+(ai.src==='own'?((ai.gain?'abbuono attivo':'abbuono passivo')+' € '+eur(ai.amt)):('abbuono € '+eur(ai.amt)+(ai.cumulativo?' · pagam. cumulativo':' (mov.)')))):'';const lab=(f.tipo==='attiva'?'Incassata':'Pagata')+abTxt;const tg=feNavTargets(f);const navLab=tg.length>1?'vedi pagamenti ↗':(tg.length===1?(tg[0].section==='cartaCredito'?'vedi in carta ↗':'vedi in banca ↗'):'');const nav=tg.length?`<div class="sub">${f.dataPag?('il '+dmy(f.dataPag)+' · '):''}<span class="golink" onclick="event.stopPropagation();feVaiPagamento('${f.id}')">${navLab}</span></div>`:'';return `<label class="pill ok" style="cursor:pointer;white-space:normal"><input type="checkbox" checked onchange="feToggleStato('${f.id}')" style="margin-right:5px">${lab}</label>${nav}`;}
-  if(st==='parziale')return `<label class="pill warn" style="cursor:pointer" title="Spunta per saldare accettando il residuo come scarto"><input type="checkbox" onchange="feToggleStato('${f.id}')" style="margin-right:5px">Parziale</label><div class="sub">residuo € ${eur(feResiduo(f))}</div>`;
+  if(st==='saldata'){const ai=feAbbuonoInfo(f);const abTxt=ai?(' · '+(ai.src==='own'?((ai.gain?'abbuono attivo':'abbuono passivo')+' € '+eur(ai.amt)):('abbuono € '+eur(ai.amt)+(ai.cumulativo?' · pagam. cumulativo':' (mov.)')))):'';const ritTxt=num(f.ritenuta||0)>0.005?(' · di cui ritenuta d\'acconto € '+eur(num(f.ritenuta))):'';const lab=(f.tipo==='attiva'?'Incassata':'Pagata')+abTxt+ritTxt;const tg=feNavTargets(f);const navLab=tg.length>1?'vedi pagamenti ↗':(tg.length===1?(tg[0].section==='cartaCredito'?'vedi in carta ↗':'vedi in banca ↗'):'');const nav=tg.length?`<div class="sub">${f.dataPag?('il '+dmy(f.dataPag)+' · '):''}<span class="golink" onclick="event.stopPropagation();feVaiPagamento('${f.id}')">${navLab}</span></div>`:'';return `<label class="pill ok" style="cursor:pointer;white-space:normal"><input type="checkbox" checked onchange="feToggleStato('${f.id}')" style="margin-right:5px">${lab}</label>${nav}`;}
+  if(st==='parziale')return `<label class="pill warn" style="cursor:pointer" title="Spunta per saldare accettando il residuo come scarto"><input type="checkbox" onchange="feToggleStato('${f.id}')" style="margin-right:5px">Parziale</label><div class="sub">residuo € ${eur(feResiduo(f))}${f.tipo==='passiva'?` · <span class="golink" onclick="event.stopPropagation();feChiudiRitenuta('${f.id}')">è ritenuta d'acconto ↗</span>`:''}</div>`;
   return `<label class="pill grey" style="cursor:pointer"><input type="checkbox" onchange="feToggleStato('${f.id}')" style="margin-right:5px">Aperta</label>`;
 }
 /* Differenza non attribuibile a una fattura (incasso/pagamento cumulativo non esatto).
@@ -4078,7 +4078,7 @@ function movResiduoRic(m){if(m.residuoRic!=null)return round2(m.residuoRic);if(!
   // vecchio modello (nessuna allocazione): il movimento salda per intero le fatture collegate
   let tot=0;ids.forEach(fid=>{const f=S.fattureEl.find(x=>x.id===fid);if(f)tot+=num(f.totale);});return round2(Math.abs(m.importo)-round2(tot));}
 function movAbbuono(m){const rr=movResiduoRic(m);if(Math.abs(rr)<=0.005)return 0;return m.tipo==='E'?rr:-rr;}
-function feScartoAbbuono(f){if(!(f.alloc&&f.alloc.length))return 0;const sc=round2(num(f.totale)-fePagato(f));if(Math.abs(sc)<=0.005)return 0;return f.tipo==='passiva'?sc:-sc;}
+function feScartoAbbuono(f){if(num(f.ritenuta||0)>0.005)return 0;if(!(f.alloc&&f.alloc.length))return 0;const sc=round2(num(f.totale)-fePagato(f));if(Math.abs(sc)<=0.005)return 0;return f.tipo==='passiva'?sc:-sc;}
 /* L'abbuono di una riconciliazione va mostrato su ENTRAMBI i lati (movimento e fattura), con attribuzione.
    src='own' = nasce su questo elemento; src='mov'/'fatt' = è sull'elemento collegato (riferimento incrociato). */
 function feAbbuonoInfo(f){
@@ -4369,7 +4369,7 @@ function renderBanca(c){
     return `<span class="pill warn">Da riconciliare</span>`;
   };
   c.innerHTML=`
-    <div class="note">${svg(IC.card)}<div><b>Sezione in sviluppo (beta).</b> Importa i movimenti dall'home banking BCC (formato <b>"XLS GESTIONALE"</b>), riconciliali con le fatture elettroniche o assegna una categoria ai movimenti senza fattura. I dati restano nel gestionale.</div></div>
+    <div class="note">${svg(IC.card)}<div>Importa i movimenti dall'home banking BCC (formato <b>"XLS GESTIONALE"</b>), riconciliali con le fatture elettroniche o assegna una categoria ai movimenti senza fattura. I dati restano nel gestionale.</div></div>
     <div class="stat-grid" style="grid-template-columns:repeat(4,1fr)">
       <div class="stat"><div class="k">${svg(IC.card)} Entrate</div><div class="strong" style="color:var(--ok);font-size:20px;margin-top:4px">€ ${eur(ent)}</div></div>
       <div class="stat"><div class="k">${svg(IC.card)} Uscite</div><div class="strong" style="color:var(--danger);font-size:20px;margin-top:4px">€ ${eur(usc)}</div></div>
@@ -4656,7 +4656,7 @@ function renderCartaCredito(c){
   const M=['','gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
   const mLabel=m=>{const a=m.split('-');return M[+a[1]]+' '+a[0];};
   c.innerHTML=`
-    <div class="note">${svg(IC.card)}<div><b>Sezione in sviluppo (beta).</b> Importa gli estratti della carta di credito (PDF) e riconcilia le singole spese con le fatture passive. L'addebito riepilogativo in banca resta nella sezione Banca (categoria "Carta di credito").</div></div>
+    <div class="note">${svg(IC.card)}<div>Importa gli estratti della carta di credito (PDF) e riconcilia le singole spese con le fatture passive. L'addebito riepilogativo in banca resta nella sezione Banca (categoria "Carta di credito").</div></div>
     <div class="stat-grid" style="grid-template-columns:repeat(3,1fr)">
       <div class="stat"><div class="k">${svg(IC.card)} Spese (filtro)</div><div class="strong" style="font-size:20px;margin-top:4px">€ ${eur(tot)}</div></div>
       <div class="stat"><div class="k">${svg(IC.card)} N. spese</div><div class="strong" style="font-size:20px;margin-top:4px">${rows.length}</div></div>
@@ -4880,19 +4880,20 @@ function feDettaglio(id){
       <div class="info-row"><span>Totale documento</span><span class="strong">€ ${eur(f.totale)}</span></div>
       <div class="info-row"><span>Stato</span><span class="strong">${({saldata:(f.tipo==='attiva'?'Incassata':'Pagata'),parziale:'Parziale',aperta:'Aperta'})[feStato(f)]}</span></div>
       <div class="info-row"><span>Residuo</span><span class="strong" style="color:${feResiduo(f)>0.005?'var(--warn)':'var(--ok)'}">€ ${eur(feResiduo(f))}</span></div>
+      ${num(f.ritenuta||0)>0.005?`<div class="info-row"><span>Ritenuta d'acconto</span><span class="strong">€ ${eur(num(f.ritenuta))} <span class="sub">(versata con F24)</span></span></div>`:''}
       ${(()=>{const ai=feAbbuonoInfo(f);if(!ai)return '';let detail='';if(ai.src==='mov'&&ai.mov){detail=' · sul '+(ai.cumulativo?'pagamento cumulativo':'movimento')+' del '+(ai.mov.dataContabile?dmy(ai.mov.dataContabile):'—');if(ai.cumulativo&&ai.altre&&ai.altre.length)detail+=' (insieme a '+esc(ai.altre.join(', '))+')';}return `<div class="info-row"><span>Abbuono</span><span class="strong" style="color:${ai.gain?'var(--ok)':'var(--warn)'}">${ai.gain?'attivo (guadagno)':'passivo (perdita)'} € ${eur(ai.amt)}${detail}</span></div>`;})()}
     </div>
     ${(f.righe&&f.righe.length)?`<div class="section-label">Righe</div><table><tbody>${f.righe.map(r=>`<tr><td>${esc(r.descrizione||'')}</td><td class="num sub">${r.quantita?esc(r.quantita)+' '+esc(r.um||''):''}</td><td class="num">€ ${eur(r.prezzo)}</td></tr>`).join('')}</tbody></table>`:''}
     ${(f.pagamenti&&f.pagamenti.length)?`<div class="section-label">Scadenze di pagamento (dalla fattura)</div><table><tbody>${f.pagamenti.map(p=>`<tr><td>${p.scadenza?dmy(p.scadenza):'—'}</td><td class="sub">${esc(FE_MP[p.modalita]||p.modalita||'')}</td><td class="num">€ ${eur(p.importo)}</td></tr>`).join('')}</tbody></table>`:''}
-    ${(()=>{const pays=fePagamenti(f);if(!pays.length)return '';return `<div class="section-label">Pagamenti riconciliati</div><div class="sub" style="margin:-4px 0 6px">Tocca un collegamento per aprire la sezione corrispondente.</div><table><tbody>${pays.map(p=>{let cell;if(p.isCard){const eid=String(p.movId).slice(6);const m=cartaMovBanca(eid);cell=`Carta di credito · <span class="golink" onclick="closeModal();goHighlight('cartaCredito','carta-${eid}')">vedi spesa ↗</span>`+(m?` · <span class="golink" onclick="closeModal();goHighlight('banca','mov-${m.id}')">addebito in banca ↗</span>`:'');}else{cell=`Banca · <span class="golink" onclick="closeModal();goHighlight('banca','mov-${p.movId}')">vedi movimento ↗</span>`;}return `<tr><td>${p.data?dmy(p.data):'—'}</td><td class="sub">${cell}</td><td class="num">€ ${eur(p.imp)}</td></tr>`;}).join('')}${(f.alloc&&f.alloc.length)?`<tr><td colspan="2" style="text-align:right"><b>Residuo</b></td><td class="num"><b>€ ${eur(feResiduo(f))}</b></td></tr>`:''}</tbody></table>`;})()}
-    ${feStato(f)==='parziale'?`<button class="btn sm" style="margin-top:8px" onclick="feChiudiScarto('${f.id}')">Chiudi con scarto: ${(f.tipo==='passiva')?'abbuono attivo (guadagno)':'abbuono passivo (perdita)'} di € ${eur(feResiduo(f))}</button>`:''}
+    ${(()=>{const pays=fePagamenti(f);if(!pays.length)return '';return `<div class="section-label">Pagamenti riconciliati</div><div class="sub" style="margin:-4px 0 6px">Tocca un collegamento per aprire la sezione corrispondente.</div><table><tbody>${pays.map(p=>{let cell;if(p.isCard){const eid=String(p.movId).slice(6);const m=cartaMovBanca(eid);cell=`Carta di credito · <span class="golink" onclick="closeModal();goHighlight('cartaCredito','carta-${eid}')">vedi spesa ↗</span>`+(m?` · <span class="golink" onclick="closeModal();goHighlight('banca','mov-${m.id}')">addebito in banca ↗</span>`:'');}else{cell=`Banca · <span class="golink" onclick="closeModal();goHighlight('banca','mov-${p.movId}')">vedi movimento ↗</span>`;}return `<tr><td>${p.data?dmy(p.data):'—'}</td><td class="sub">${cell}</td><td class="num">€ ${eur(p.imp)}</td></tr>`;}).join('')}${num(f.ritenuta||0)>0.005?`<tr><td colspan="2" style="text-align:right">Ritenuta d'acconto (versata con F24)</td><td class="num">€ ${eur(num(f.ritenuta))}</td></tr>`:''}${(f.alloc&&f.alloc.length)?`<tr><td colspan="2" style="text-align:right"><b>Residuo</b></td><td class="num"><b>€ ${eur(feResiduo(f))}</b></td></tr>`:''}</tbody></table>`;})()}
+    ${feStato(f)==='parziale'?`<button class="btn sm" style="margin-top:8px" onclick="feChiudiScarto('${f.id}')">Chiudi con scarto: ${(f.tipo==='passiva')?'abbuono attivo (guadagno)':'abbuono passivo (perdita)'} di € ${eur(feResiduo(f))}</button>${f.tipo==='passiva'?`<button class="btn sm" style="margin-top:8px;margin-left:6px" onclick="feChiudiRitenuta('${f.id}')">Chiudi come ritenuta d'acconto di € ${eur(feResiduo(f))}</button>`:''}`:''}${num(f.ritenuta||0)>0.005?`<button class="btn sm" style="margin-top:8px;opacity:.8" onclick="feAnnullaRitenuta('${f.id}')">Annulla ritenuta d'acconto</button>`:''}
     <div class="sub" style="margin-top:10px">File: ${esc(f.fileName||'—')}</div>`;
   openModal('Fattura '+esc(f.numero||''),body,()=>true,{wide:true,submitLabel:'Chiudi'});
 }
 function feToggleStato(id){
   const f=S.fattureEl.find(x=>x.id===id);if(!f)return;
   const st0=feStato(f);
-  if(st0==='saldata'){ f.saldoForzato=false; if(!(f.alloc&&f.alloc.length))f.pagata=false; feSyncPagata(f); }
+  if(st0==='saldata'){ f.saldoForzato=false; if(f.ritenuta)delete f.ritenuta; if(!(f.alloc&&f.alloc.length))f.pagata=false; feSyncPagata(f); }
   else { f.saldoForzato=true; feSyncPagata(f); } // accetta il residuo come scarto e salda
   persist();render();
   if(!PN_ENABLED){const nw=feStato(f);toast(nw==='saldata'?(f.tipo==='attiva'?'Segnata come incassata':'Segnata come pagata'):'Riaperta');return;}
@@ -4912,6 +4913,8 @@ function feToggleStato(id){
   }
 }
 function feChiudiScarto(id){const f=S.fattureEl.find(x=>x.id===id);if(!f)return;f.saldoForzato=true;feSyncPagata(f);persist();render();closeModal();toast('Fattura saldata, residuo registrato come scarto');}
+function feChiudiRitenuta(id){const f=S.fattureEl.find(x=>x.id===id);if(!f)return;const r=round2(num(f.totale)-fePagato(f));if(r<=0.005){toast('Nessun residuo da registrare come ritenuta');return;}f.ritenuta=r;f.saldoForzato=false;feSyncPagata(f);persist();render();closeModal();toast('Fattura saldata · ritenuta d\'acconto € '+eur(r)+' (da versare con F24)');}
+function feAnnullaRitenuta(id){const f=S.fattureEl.find(x=>x.id===id);if(!f)return;delete f.ritenuta;feSyncPagata(f);persist();render();closeModal();toast('Ritenuta annullata, fattura riaperta');}
 function feToggleSel(id,ck){if(ck)feSel.add(id);else feSel.delete(id);render();}
 function feSelAll(ck){const rows=feFiltra();if(ck)rows.forEach(f=>feSel.add(f.id));else rows.forEach(f=>feSel.delete(f.id));render();}
 function feClearSel(){feSel.clear();render();}

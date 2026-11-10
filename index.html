@@ -4843,6 +4843,7 @@ function renderFattureEl(c){
   // riepilogo IVA per aliquota
   const perAliq={};rows.forEach(f=>(f.aliquote||[]).forEach(r=>{const k=r.aliquota+'|'+(r.natura||'');(perAliq[k]=perAliq[k]||{aliquota:r.aliquota,natura:r.natura,imp:0,iva:0});perAliq[k].imp+=num(r.imponibile);perAliq[k].iva+=num(r.imposta);}));
   const aliq=Object.values(perAliq).sort((a,b)=>a.aliquota-b.aliquota);
+  const totImpRiep=aliq.reduce((s,a)=>s+a.imp,0),totIvaRiep=aliq.reduce((s,a)=>s+a.iva,0);
   const anni=feAnni();const opt=(v,cur)=>`<option ${cur===v?'selected':''}>${esc(v)}</option>`;
   c.innerHTML=`
     <div class="stat-grid" style="grid-template-columns:repeat(3,1fr)">
@@ -4861,7 +4862,8 @@ function renderFattureEl(c){
     </div>
     ${aliq.length?`<div class="card" style="margin-bottom:14px"><div class="card-head"><h2>Riepilogo IVA</h2></div>
       <div style="padding:12px 18px"><table><thead><tr><th>Aliquota / Natura</th><th class="num">Imponibile</th><th class="num">IVA</th></tr></thead>
-      <tbody>${aliq.map(a=>`<tr><td>${a.aliquota?a.aliquota+'%':(a.natura?'Natura '+esc(a.natura):'—')}</td><td class="num">€ ${eur(a.imp)}</td><td class="num">€ ${eur(a.iva)}</td></tr>`).join('')}</tbody></table></div></div>`:''}
+      <tbody>${aliq.map(a=>`<tr><td>${a.aliquota?a.aliquota+'%':(a.natura?'Natura '+esc(a.natura):'—')}</td><td class="num">€ ${eur(a.imp)}</td><td class="num">€ ${eur(a.iva)}</td></tr>`).join('')}</tbody>
+      <tfoot><tr style="border-top:2px solid var(--line);font-weight:700"><td>Totale</td><td class="num">€ ${eur(totImpRiep)}</td><td class="num">€ ${eur(totIvaRiep)}</td></tr></tfoot></table></div></div>`:''}
     ${feSel.size?`<div class="toolbar" style="background:var(--accent-soft);border-radius:10px;padding:8px 12px;margin-bottom:10px">
       <span class="strong">${feSel.size} selezionate</span><div style="flex:1"></div>
       <button class="btn sm" onclick="feStampaSelezionate()">${svg(IC.print,1.9)} Stampa</button>

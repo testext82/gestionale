@@ -4065,7 +4065,14 @@ function feLabelSaldata(f){if(f.compensa&&f.compensa.length)return 'Compensata';
 function feResiduo(f){const rit=num(f.ritenuta||0),comp=feCompensato(f);if((f.alloc&&f.alloc.length)||comp>0.005)return round2(num(f.totale)-fePagato(f)-rit-comp);return f.pagata?0:round2(num(f.totale)-rit);}
 function feNetto(f){return (f.pagamenti&&f.pagamenti.length)?round2(f.pagamenti.reduce((s,p)=>s+num(p.importo),0)):0;}
 function feStato(f){if(f.saldoForzato||num(f.ritenuta||0)>0.005)return 'saldata';if((f.alloc&&f.alloc.length)||(f.compensa&&f.compensa.length))return feResiduo(f)<=0.005?'saldata':'parziale';return f.pagata?'saldata':'aperta';}
-function feSyncPagata(f){const sal=feStato(f)==='saldata';f.pagata=sal;if(sal){if(!f.dataPag){const a=(f.alloc||[]);f.dataPag=(a.length&&a[a.length-1].data)||today();}}else{f.dataPag='';}}
+function feSyncPagata(f){const sal=feStato(f)==='saldata';f.pagata=sal;if(sal){if(!f.dataPag){const a=(f.alloc||[]);f.dataPag=(a.length&&a[a.length-1].data)||today();}}else{f.dataPag='';}if(f.tipo==='attiva'&&Array.isArray(S.fatture))proformaSyncDaFE(f);}
+/* ---- Collegamento proforma (sezione Fatture) <-> fattura elettronica attiva "FPR N/AA" ----
+   La proforma n.N dell'anno AAAA corrisponde alla fattura elettronica "FPR N/AA" (stesso cliente/data/importo).
+   Quando la fattura elettronica risulta incassata (saldata), la proforma si segna incassata in automatico.
+   incassoManuale = l'utente ha preso il controllo a mano -> l'automatismo non la tocca più. */
+function proformaSyncDaFE(fe){const m=String(fe.numero||'').match(/^FPR\s*(\d+)\s*\/\s*(\d+)$/i);if(!m)return;const n=+m[1],yy=+m[2];const p=S.fatture.find(x=>+x.numero===n&&(+String(x.anno).slice(-2))===yy);if(!p||p.incassoManuale)return;p.feId=fe.id;const inc=feStato(fe)==='saldata';if(inc){if(!p.incassata){p.incassata=true;p.incassoAuto=true;p.dataIncasso=fe.dataPag||today();}}else if(p.incassoAuto){p.incassata=false;delete p.incassoAuto;p.dataIncasso='';}}
+function fatturaFE(f){if(f&&f.feId){const x=S.fattureEl.find(e=>e.id===f.feId);if(x)return x;}const t=('FPR '+f.numero+'/'+String(f.anno).slice(-2)).toUpperCase();const fe=(S.fattureEl||[]).find(e=>e.tipo==='attiva'&&String(e.numero||'').replace(/\s+/g,' ').trim().toUpperCase()===t);if(fe&&f)f.feId=fe.id;return fe||null;}
+function fattureSyncIncassi(){let n=0;(S.fatture||[]).forEach(p=>{if(p.incassoManuale)return;const fe=fatturaFE(p);if(!fe)return;const inc=feStato(fe)==='saldata';if(inc&&!p.incassata){p.incassata=true;p.incassoAuto=true;p.dataIncasso=fe.dataPag||today();n++;}else if(!inc&&p.incassoAuto){p.incassata=false;delete p.incassoAuto;p.dataIncasso='';n++;}});return n;}
 function feStatoCell(f){
   const st=feStato(f);
   if(st==='saldata'){const ai=feAbbuonoInfo(f);const abTxt=ai?(' · '+(ai.src==='own'?((ai.gain?'abbuono attivo':'abbuono passivo')+' € '+eur(ai.amt)):('abbuono € '+eur(ai.amt)+(ai.cumulativo?' · pagam. cumulativo':' (mov.)')))):'';const ritTxt=num(f.ritenuta||0)>0.005?(' · di cui ritenuta d\'acconto € '+eur(num(f.ritenuta))):'';const lab=feLabelSaldata(f)+abTxt+ritTxt;const tg=feNavTargets(f);const navLab=tg.length>1?'vedi pagamenti ↗':(tg.length===1?(tg[0].section==='cartaCredito'?'vedi in carta ↗':'vedi in banca ↗'):'');const nav=tg.length?`<div class="sub">${f.dataPag?('il '+dmy(f.dataPag)+' · '):''}<span class="golink" onclick="event.stopPropagation();feVaiPagamento('${f.id}')">${navLab}</span></div>`:'';return `<label class="pill ok" style="cursor:pointer;white-space:normal"><input type="checkbox" checked onchange="feToggleStato('${f.id}')" style="margin-right:5px">${lab}</label>${nav}`;}
@@ -5196,6 +5203,7 @@ function renderReport(c){
 
 /* ===================== FATTURE ===================== */
 function renderFatture(c){
+  fattureSyncIncassi();
   setActions(`<button class="btn" onclick="stampaRegistroFatture()">${svg(IC.print)} Registro</button>
     <button class="btn primary" onclick="openFatturaForm()">${svg(IC.plus)} Nuova fattura</button>`);
   let rows=[...S.fatture].sort((a,b)=>(b.data||'').localeCompare(a.data||'')||b.numero-a.numero);
@@ -5223,7 +5231,7 @@ function renderFatture(c){
             <td class="strong">${x.numero}/${x.anno}</td>
             <td class="sub">${dmy(x.data)}</td>
             <td>${esc(clienteName(x.clienteId))}</td>
-            <td class="sub">${esc(fatturaRifLabel(x))}</td>
+            <td class="sub">${esc(fatturaRifLabel(x))}${(()=>{const fe=fatturaFE(x);const lk=fe?`<span class="golink" onclick="goHighlight('fattureEl','fe-${fe.id}')">Fatt. elettr. ${esc(fe.numero)} ↗</span>`:`<span style="color:var(--warn)">FE non ancora emessa</span>`;const inc=x.incassata?`<span style="color:var(--ok)"> · ✓ incassata${x.dataIncasso?' il '+dmy(x.dataIncasso):''}${x.incassoAuto?' (auto)':''}</span>`:'';return `<div style="margin-top:2px">${lk}${inc}</div>`;})()}</td>
             <td>${fatturaScadenzaCell(x)}</td>
             <td class="num sub">€ ${eur(x.imponibile)}</td>
             <td class="num sub">€ ${eur(x.imposta)}</td>
@@ -5242,7 +5250,7 @@ function renderFatture(c){
 }
 function fatturaToggleIncasso(id){
   const f=S.fatture.find(x=>x.id===id);if(!f)return;
-  f.incassata=!f.incassata;f.dataIncasso=f.incassata?today():'';
+  f.incassata=!f.incassata;f.dataIncasso=f.incassata?today():'';f.incassoManuale=true;delete f.incassoAuto;
   persist();render();
   if(!PN_ENABLED){toast(f.incassata?'Fattura incassata':'Fattura da incassare');return;}
   if(f.incassata){

@@ -547,10 +547,10 @@ async function loadState(){
   if(Array.isArray(S.movBancaCategorie)&&!S.movBancaCategorie.includes('Carta di credito')){const i=S.movBancaCategorie.indexOf('Spese bancarie');if(i>-1)S.movBancaCategorie.splice(i+1,0,'Carta di credito');else S.movBancaCategorie.push('Carta di credito');}
   ['Ritenute sindacali','Finanziamenti soci','Polizze assicurative','Abbuoni / arrotondamenti'].forEach(cn=>{if(Array.isArray(S.movBancaCategorie)&&!S.movBancaCategorie.includes(cn))S.movBancaCategorie.push(cn);});
   if(Array.isArray(S.movBancaCategorie)&&!S.movBancaCategorie.includes('Dividendi')){const i=S.movBancaCategorie.indexOf('Interessi');if(i>-1)S.movBancaCategorie.splice(i+1,0,'Dividendi');else S.movBancaCategorie.push('Dividendi');}
-  if(S.settings&&!S.settings.bancaAutoCatV3){const AC=['Spese bancarie','Carta di credito','Dividendi','Stipendi / Compensi','Ritenute sindacali'];(S.movimentiBanca||[]).forEach(m=>{if(m.riconciliato)return;if(!m.categoria||AC.includes(m.categoria))m.categoria=bancaAutoCat(m);});S.settings.bancaAutoCatV3=true;}
+  if(S.settings&&!S.settings.bancaAutoCatV3){const AC=['Spese bancarie','Carta di credito','Dividendi','Stipendi / Compensi','Ritenute sindacali'];(S.movimentiBanca||[]).forEach(m=>{if(m.riconciliato||m.catManuale)return;if(!m.categoria||AC.includes(m.categoria))m.categoria=bancaAutoCat(m);});S.settings.bancaAutoCatV3=true;}
   if(S.settings&&!S.settings.cartaLinkV2){try{cartaLinkBanca();}catch(e){}S.settings.cartaLinkV2=true;}
   if(S.settings&&!S.settings.cartaLinkV3){try{cartaLinkBanca();}catch(e){}S.settings.cartaLinkV3=true;}
-  if(S.settings&&!S.settings.bancaAutoCatV4){(S.movimentiBanca||[]).forEach(m=>{if(m.riconciliato)return;if(!m.categoria){const a=bancaAutoCat(m);if(a)m.categoria=a;}});S.settings.bancaAutoCatV4=true;}
+  if(S.settings&&!S.settings.bancaAutoCatV4){(S.movimentiBanca||[]).forEach(m=>{if(m.riconciliato||m.catManuale)return;if(!m.categoria){const a=bancaAutoCat(m);if(a)m.categoria=a;}});S.settings.bancaAutoCatV4=true;}
   if(!Array.isArray(S.appLog)) S.appLog=[];
   if(!Array.isArray(S.pnCategorie)||S.pnCategorie.length===0) S.pnCategorie=[...PN_CATEGORIE_DEF];
   [{nome:'Tonnellate',kgPerUnit:1000},{nome:'Metri cubi',kgPerUnit:''}].forEach(o=>{if(!(S.unitaMisura||[]).some(u=>String(u.nome).toLowerCase()===o.nome.toLowerCase()))S.unitaMisura.push({id:uid(),...o});});
@@ -4059,15 +4059,18 @@ function bancaAnni(){const s=new Set(S.movimentiBanca.map(m=>(m.dataContabile||'
    Una fattura può essere saldata da più movimenti (es. bonifico netto + ritenuta, o acconto + saldo).
    f.alloc = [{movId, imp, data}] sono gli importi riconciliati; il residuo tiene la fattura aperta. */
 function fePagato(f){return round2((f.alloc||[]).reduce((s,a)=>s+num(a.imp),0));}
-function feResiduo(f){const rit=num(f.ritenuta||0);if(f.alloc&&f.alloc.length)return round2(num(f.totale)-fePagato(f)-rit);return f.pagata?0:round2(num(f.totale)-rit);}
+function feCompensato(f){return round2((f.compensa||[]).reduce((s,c)=>s+num(c.imp),0));}
+function feIsNC(f){return f.tipoDoc==='TD04';}
+function feLabelSaldata(f){if(f.compensa&&f.compensa.length)return 'Compensata';if(feIsNC(f))return f.tipo==='attiva'?'Rimborsata al cliente':'Rimborsata';return f.tipo==='attiva'?'Incassata':'Pagata';}
+function feResiduo(f){const rit=num(f.ritenuta||0),comp=feCompensato(f);if((f.alloc&&f.alloc.length)||comp>0.005)return round2(num(f.totale)-fePagato(f)-rit-comp);return f.pagata?0:round2(num(f.totale)-rit);}
 function feNetto(f){return (f.pagamenti&&f.pagamenti.length)?round2(f.pagamenti.reduce((s,p)=>s+num(p.importo),0)):0;}
-function feStato(f){if(f.saldoForzato||num(f.ritenuta||0)>0.005)return 'saldata';if(f.alloc&&f.alloc.length)return feResiduo(f)<=0.005?'saldata':'parziale';return f.pagata?'saldata':'aperta';}
+function feStato(f){if(f.saldoForzato||num(f.ritenuta||0)>0.005)return 'saldata';if((f.alloc&&f.alloc.length)||(f.compensa&&f.compensa.length))return feResiduo(f)<=0.005?'saldata':'parziale';return f.pagata?'saldata':'aperta';}
 function feSyncPagata(f){const sal=feStato(f)==='saldata';f.pagata=sal;if(sal){if(!f.dataPag){const a=(f.alloc||[]);f.dataPag=(a.length&&a[a.length-1].data)||today();}}else{f.dataPag='';}}
 function feStatoCell(f){
   const st=feStato(f);
-  if(st==='saldata'){const ai=feAbbuonoInfo(f);const abTxt=ai?(' · '+(ai.src==='own'?((ai.gain?'abbuono attivo':'abbuono passivo')+' € '+eur(ai.amt)):('abbuono € '+eur(ai.amt)+(ai.cumulativo?' · pagam. cumulativo':' (mov.)')))):'';const ritTxt=num(f.ritenuta||0)>0.005?(' · di cui ritenuta d\'acconto € '+eur(num(f.ritenuta))):'';const lab=(f.tipo==='attiva'?'Incassata':'Pagata')+abTxt+ritTxt;const tg=feNavTargets(f);const navLab=tg.length>1?'vedi pagamenti ↗':(tg.length===1?(tg[0].section==='cartaCredito'?'vedi in carta ↗':'vedi in banca ↗'):'');const nav=tg.length?`<div class="sub">${f.dataPag?('il '+dmy(f.dataPag)+' · '):''}<span class="golink" onclick="event.stopPropagation();feVaiPagamento('${f.id}')">${navLab}</span></div>`:'';return `<label class="pill ok" style="cursor:pointer;white-space:normal"><input type="checkbox" checked onchange="feToggleStato('${f.id}')" style="margin-right:5px">${lab}</label>${nav}`;}
-  if(st==='parziale')return `<label class="pill warn" style="cursor:pointer" title="Spunta per saldare accettando il residuo come scarto"><input type="checkbox" onchange="feToggleStato('${f.id}')" style="margin-right:5px">Parziale</label><div class="sub">residuo € ${eur(feResiduo(f))}${f.tipo==='passiva'?` · <span class="golink" onclick="event.stopPropagation();feChiudiRitenuta('${f.id}')">è ritenuta d'acconto ↗</span>`:''}</div>`;
-  return `<label class="pill grey" style="cursor:pointer"><input type="checkbox" onchange="feToggleStato('${f.id}')" style="margin-right:5px">Aperta</label>`;
+  if(st==='saldata'){const ai=feAbbuonoInfo(f);const abTxt=ai?(' · '+(ai.src==='own'?((ai.gain?'abbuono attivo':'abbuono passivo')+' € '+eur(ai.amt)):('abbuono € '+eur(ai.amt)+(ai.cumulativo?' · pagam. cumulativo':' (mov.)')))):'';const ritTxt=num(f.ritenuta||0)>0.005?(' · di cui ritenuta d\'acconto € '+eur(num(f.ritenuta))):'';const lab=feLabelSaldata(f)+abTxt+ritTxt;const tg=feNavTargets(f);const navLab=tg.length>1?'vedi pagamenti ↗':(tg.length===1?(tg[0].section==='cartaCredito'?'vedi in carta ↗':'vedi in banca ↗'):'');const nav=tg.length?`<div class="sub">${f.dataPag?('il '+dmy(f.dataPag)+' · '):''}<span class="golink" onclick="event.stopPropagation();feVaiPagamento('${f.id}')">${navLab}</span></div>`:'';return `<label class="pill ok" style="cursor:pointer;white-space:normal"><input type="checkbox" checked onchange="feToggleStato('${f.id}')" style="margin-right:5px">${lab}</label>${nav}`;}
+  if(st==='parziale')return `<label class="pill warn" style="cursor:pointer" title="Spunta per saldare accettando il residuo come scarto"><input type="checkbox" onchange="feToggleStato('${f.id}')" style="margin-right:5px">Parziale</label><div class="sub">residuo € ${eur(feResiduo(f))}${(f.tipo==='passiva'&&!feIsNC(f))?` · <span class="golink" onclick="event.stopPropagation();feChiudiRitenuta('${f.id}')">è ritenuta d'acconto ↗</span>`:''}${feIsNC(f)?` · <span class="golink" onclick="event.stopPropagation();feCompensaDialog('${f.id}')">compensa fattura ↗</span>`:''}</div>`;
+  return `<label class="pill grey" style="cursor:pointer"><input type="checkbox" onchange="feToggleStato('${f.id}')" style="margin-right:5px">Aperta</label>${feIsNC(f)?`<div class="sub"><span class="golink" onclick="event.stopPropagation();feCompensaDialog('${f.id}')">compensa fattura ↗</span></div>`:''}`;
 }
 /* Differenza non attribuibile a una fattura (incasso/pagamento cumulativo non esatto).
    Positivo nel verso "soldi rimasti a noi vs atteso" = guadagno (abbuono attivo); negativo = perdita (abbuono passivo). */
@@ -4143,7 +4146,8 @@ function abbuoniDialog(y){
 function bancaCandidati(m){
   const absImp=Math.abs(m.importo);const tipoF=m.tipo==='E'?'attiva':'passiva';const dmov=m.dataContabile;
   const nd=bNorm(m.descrizione+' '+m.causale);
-  return S.fattureEl.filter(f=>f.tipo===tipoF&&feStato(f)!=='saldata'&&num(f.totale)>0.01).map(f=>{
+  const tipoNC=m.tipo==='E'?'passiva':'attiva';
+  return S.fattureEl.filter(f=>feStato(f)!=='saldata'&&num(f.totale)>0.01&&((!feIsNC(f)&&f.tipo===tipoF)||(feIsNC(f)&&f.tipo===tipoNC))).map(f=>{
     let score=0;const res=feResiduo(f);const net=(fePagato(f)<0.005)?feNetto(f):0;
     const diff=Math.min(Math.abs(res-absImp), net>0.005?Math.abs(net-absImp):Infinity);
     if(diff<0.01)score+=100;else if(diff<=absImp*0.01+0.5)score+=60;else if(diff<=absImp*0.05)score+=25;
@@ -4158,7 +4162,8 @@ function bancaCombinazioni(m){
   const target=round2(Math.abs(m.importo));
   const tipoF=m.tipo==='E'?'attiva':'passiva';
   const nd=bNorm(m.descrizione+' '+m.causale);
-  let base=S.fattureEl.filter(f=>f.tipo===tipoF&&feStato(f)!=='saldata'&&(!f.data||f.data<=m.dataContabile)&&feResiduo(f)>0.01);
+  const tipoNC=m.tipo==='E'?'passiva':'attiva';
+  let base=S.fattureEl.filter(f=>feStato(f)!=='saldata'&&(!f.data||f.data<=m.dataContabile)&&feResiduo(f)>0.01&&((!feIsNC(f)&&f.tipo===tipoF)||(feIsNC(f)&&f.tipo===tipoNC)));
   const _teleauto=/TELEPASS|AUTOSTRAD/.test(nd); // Telepass e Autostrade sono pagate insieme con un unico addebito
   base=base.filter(f=>{const nm=bNorm(f.controparteNome);const toks=nm.split(' ').filter(t=>t.length>=4);const nameHit=toks.length&&toks.filter(t=>nd.includes(t)).length>=1;if(nameHit)return true;if(_teleauto&&/TELEPASS|AUTOSTRAD/.test(nm))return true;return false;});
   if(base.length<2)return [];
@@ -4265,7 +4270,7 @@ function bancaAnnullaRic(movId){
   if(bancaAutoCat(m)==='Carta di credito')m.cartaNoAuto=true;
   m.riconciliato=false;m.fatturaIds=[];m.cartaMese='';m.bolloCarta=0;m.cartaIds=[];m.residuoRic=0;persist();render();toast('Riconciliazione annullata');
 }
-function bancaSetCat(id,cat){const m=S.movimentiBanca.find(x=>x.id===id);if(!m)return;m.categoria=cat;persist();render();}
+function bancaSetCat(id,cat){const m=S.movimentiBanca.find(x=>x.id===id);if(!m)return;m.categoria=cat;if(cat)m.catManuale=true;else delete m.catManuale;persist();render();}
 /* Stato "Fuori archivio": pagamento di una fattura non presente nel gestionale (es. ante 2025).
    Il movimento risulta sistemato (verde), esce dai "da riconciliare" e NON genera abbuoni. */
 function bancaFuoriArchivio(id){const m=S.movimentiBanca.find(x=>x.id===id);if(!m)return;m.fuoriArchivio=true;m.categoria='';logAction('Movimento segnato fuori archivio',dmy(m.dataContabile)+' · € '+eur(Math.abs(m.importo)));persist();render();toast('Segnato: fattura non in archivio');}
@@ -4915,6 +4920,32 @@ function feToggleStato(id){
 function feChiudiScarto(id){const f=S.fattureEl.find(x=>x.id===id);if(!f)return;f.saldoForzato=true;feSyncPagata(f);persist();render();closeModal();toast('Fattura saldata, residuo registrato come scarto');}
 function feChiudiRitenuta(id){const f=S.fattureEl.find(x=>x.id===id);if(!f)return;const r=round2(num(f.totale)-fePagato(f));if(r<=0.005){toast('Nessun residuo da registrare come ritenuta');return;}f.ritenuta=r;f.saldoForzato=false;feSyncPagata(f);persist();render();closeModal();toast('Fattura saldata · ritenuta d\'acconto € '+eur(r)+' (da versare con F24)');}
 function feAnnullaRitenuta(id){const f=S.fattureEl.find(x=>x.id===id);if(!f)return;delete f.ritenuta;feSyncPagata(f);persist();render();closeModal();toast('Ritenuta annullata, fattura riaperta');}
+/* ---- Compensazione documenti (nota di credito <-> fattura della stessa controparte, senza cassa) ---- */
+function feCompensaDialog(id){
+  const f=S.fattureEl.find(x=>x.id===id);if(!f)return;
+  const key=bNorm(f.controparteNome||'');
+  const cand=S.fattureEl.filter(x=>x.id!==f.id&&x.tipo===f.tipo&&feStato(x)!=='saldata'&&feResiduo(x)>0.005&&bNorm(x.controparteNome||'')===key&&(feIsNC(f)!==feIsNC(x)));
+  const rows=cand.length?cand.map(x=>`<div style="display:flex;gap:8px;align-items:center;padding:7px 10px;border:1px solid var(--line);border-radius:8px;margin-bottom:6px"><div style="flex:1"><div class="strong">${feIsNC(x)?'Nota di credito':'Fattura'} n. ${esc(x.numero||'—')}</div><div class="sub">${x.data?dmy(x.data):'—'} · residuo € ${eur(feResiduo(x))}</div></div><button class="btn sm primary" onclick="feCompensa('${f.id}','${x.id}')">Compensa € ${eur(Math.min(feResiduo(f),feResiduo(x)))}</button></div>`).join(''):`<div class="sub">Nessun documento compatibile (stessa controparte, ${feIsNC(f)?'fatture aperte':'note di credito aperte'}).</div>`;
+  const body=`<div class="note">${svg(IC.card)}<div>Compensa <b>${feIsNC(f)?'nota di credito':'fattura'} n. ${esc(f.numero||'')}</b> (${esc(f.controparteNome||'')}) · residuo € ${eur(feResiduo(f))} con una ${feIsNC(f)?'fattura':'nota di credito'} della stessa controparte, <b>senza movimento di cassa</b>.</div></div><div class="section-label">Documenti compensabili</div>${rows}`;
+  openModal('Compensazione documenti',body,()=>true,{wide:true,submitLabel:'Chiudi'});
+}
+function feCompensa(aId,bId){
+  const a=S.fattureEl.find(x=>x.id===aId),b=S.fattureEl.find(x=>x.id===bId);if(!a||!b)return;
+  const imp=round2(Math.min(feResiduo(a),feResiduo(b)));if(imp<=0.005){toast('Niente da compensare');return;}
+  const d=today();
+  a.compensa=a.compensa||[];a.compensa.push({feId:b.id,imp,data:d});
+  b.compensa=b.compensa||[];b.compensa.push({feId:a.id,imp,data:d});
+  feSyncPagata(a);feSyncPagata(b);
+  logAction('Compensazione NC/fattura',(a.numero||'?')+' <-> '+(b.numero||'?')+' € '+eur(imp));
+  persist();render();closeModal();toast('Compensati € '+eur(imp)+' tra n. '+(a.numero||'?')+' e n. '+(b.numero||'?'));
+}
+function feAnnullaCompensa(id){
+  const f=S.fattureEl.find(x=>x.id===id);if(!f||!(f.compensa&&f.compensa.length))return;
+  (f.compensa||[]).forEach(c=>{const o=S.fattureEl.find(x=>x.id===c.feId);if(o&&o.compensa){o.compensa=o.compensa.filter(z=>z.feId!==f.id);if(!o.compensa.length)delete o.compensa;feSyncPagata(o);}});
+  delete f.compensa;feSyncPagata(f);
+  logAction('Annulla compensazione',f.numero||'?');
+  persist();render();closeModal();toast('Compensazione annullata');
+}
 function feToggleSel(id,ck){if(ck)feSel.add(id);else feSel.delete(id);render();}
 function feSelAll(ck){const rows=feFiltra();if(ck)rows.forEach(f=>feSel.add(f.id));else rows.forEach(f=>feSel.delete(f.id));render();}
 function feClearSel(){feSel.clear();render();}

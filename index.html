@@ -917,8 +917,7 @@ const NAV=[
   {id:'docamm',label:'Documenti amministrativi',ico:'clip',badge:()=>S.docamm.length},
   {id:'sicurezza',label:'Sicurezza e scadenze',ico:'shield',badge:()=>S.sicurezza.length+S.scadenze.length},
   {id:'rifornimenti',label:'Rifornimenti carburante',ico:'truck',badge:()=>S.rifornimenti.length},
-  {id:'analisiCosti',label:'Analisi costi',ico:'card'},
-  {id:'report',label:'Report e statistiche',ico:'dash'},
+  {id:'report',label:'Report e analisi',ico:'dash'},
   {id:'contrattiRA',label:'Contratti R.A.',ico:'contract',beta:true,badge:()=>S.contrattiRA.length},
   {id:'conferimenti',label:'Registro conferimenti R10',ico:'contract',beta:true,badge:()=>S.conferimenti.length},
   {group:'Anagrafiche'},
@@ -1008,7 +1007,7 @@ const TITLES={
   scadenzario:['Scadenzario incassi/pagamenti','Cosa devi incassare e cosa devi pagare, da fatture interne ed elettroniche'],
   analisiCosti:['Analisi costi','Analisi dei costi dalle fatture elettroniche passive, per fornitore e periodo'],
   conferimenti:['Registro conferimenti R10','Registro dei conferimenti di terre e rocce da scavo per E.E.R., produttore e periodo'],
-  report:['Report e statistiche','Andamento fatturato, quantità trasportate, cassa e incassi'],
+  report:['Report e analisi','Statistiche (fatturato, incassi, IVA) e analisi costi fornitori, in un unico posto'],
   contrattiRA:['Contratti R.A.','Contratti per il conferimento di terre e rocce da scavo (recupero ambientale) — EER 17.05.04'],
   clienti:['Clienti','Anagrafica clienti'],
   destinazioni:['Destinazioni','Luoghi di consegna riutilizzabili'],
@@ -5111,7 +5110,14 @@ function stampaRegistroPrimaNota(){
 /* ===================== REPORT E STATISTICHE ===================== */
 let reportAnno=String(new Date().getFullYear());
 let ivaPeriodo='mese';
+let reportTab='stat';
 function renderReport(c){
+  const tab=reportTab;
+  c.innerHTML=`<div class="seg" style="margin-bottom:14px"><button class="btn sm ${tab==='stat'?'primary':''}" onclick="reportTab='stat';render()">Statistiche</button><button class="btn sm ${tab==='costi'?'primary':''}" onclick="reportTab='costi';render()">Analisi costi</button></div><div id="report-body"></div>`;
+  const body=c.querySelector('#report-body');
+  if(tab==='costi')renderAnalisiCosti(body);else renderReportStat(body);
+}
+function renderReportStat(c){
   const anni=(()=>{const s=new Set();[...S.fatture,...S.ddt].forEach(x=>{if(x.anno)s.add(String(x.anno));});S.primaNota.forEach(m=>{const y=String(m.data||'').slice(0,4);if(y)s.add(y);});s.add(String(new Date().getFullYear()));return [...s].sort().reverse();})();
   const y=reportAnno;
   const fatt=S.fatture.filter(f=>String(f.anno)===y);

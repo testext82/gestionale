@@ -4080,8 +4080,8 @@ function movResiduoRic(m){if(m.residuoRic!=null)return round2(m.residuoRic);if(!
   if(anyAlloc)return round2(Math.abs(m.importo)-alloc);
   // vecchio modello (nessuna allocazione): il movimento salda per intero le fatture collegate
   let tot=0;ids.forEach(fid=>{const f=S.fattureEl.find(x=>x.id===fid);if(f)tot+=num(f.totale);});return round2(Math.abs(m.importo)-round2(tot));}
-function movAbbuono(m){const rr=movResiduoRic(m);if(Math.abs(rr)<=0.005)return 0;return m.tipo==='E'?rr:-rr;}
-function feScartoAbbuono(f){if(num(f.ritenuta||0)>0.005)return 0;if(!(f.alloc&&f.alloc.length))return 0;const sc=round2(num(f.totale)-fePagato(f));if(Math.abs(sc)<=0.005)return 0;return f.tipo==='passiva'?sc:-sc;}
+function movAbbuono(m){if(m.residuoTipo&&m.residuoTipo!=='abbuono')return 0;const rr=movResiduoRic(m);if(Math.abs(rr)<=0.005)return 0;return m.tipo==='E'?rr:-rr;}
+function feScartoAbbuono(f){if(!(f.alloc&&f.alloc.length))return 0;const sc=round2(num(f.totale)-fePagato(f)-num(f.ritenuta||0)-feCompensato(f));if(Math.abs(sc)<=0.005)return 0;return f.tipo==='passiva'?sc:-sc;}
 /* L'abbuono di una riconciliazione va mostrato su ENTRAMBI i lati (movimento e fattura), con attribuzione.
    src='own' = nasce su questo elemento; src='mov'/'fatt' = è sull'elemento collegato (riferimento incrociato). */
 function feAbbuonoInfo(f){
@@ -4271,6 +4271,7 @@ function bancaAnnullaRic(movId){
   m.riconciliato=false;m.fatturaIds=[];m.cartaMese='';m.bolloCarta=0;m.cartaIds=[];m.residuoRic=0;persist();render();toast('Riconciliazione annullata');
 }
 function bancaSetCat(id,cat){const m=S.movimentiBanca.find(x=>x.id===id);if(!m)return;m.categoria=cat;if(cat)m.catManuale=true;else delete m.catManuale;persist();render();}
+function bancaSetResiduoTipo(id,tipo){const m=S.movimentiBanca.find(x=>x.id===id);if(!m)return;if(tipo&&tipo!=='abbuono')m.residuoTipo=tipo;else delete m.residuoTipo;persist();render();}
 /* Stato "Fuori archivio": pagamento di una fattura non presente nel gestionale (es. ante 2025).
    Il movimento risulta sistemato (verde), esce dai "da riconciliare" e NON genera abbuoni. */
 function bancaFuoriArchivio(id){const m=S.movimentiBanca.find(x=>x.id===id);if(!m)return;m.fuoriArchivio=true;m.categoria='';logAction('Movimento segnato fuori archivio',dmy(m.dataContabile)+' · € '+eur(Math.abs(m.importo)));persist();render();toast('Segnato: fattura non in archivio');}
@@ -4367,8 +4368,13 @@ function renderBanca(c){
     if(m.riconciliato){
       if(m.cartaMese){const lines=(m.cartaIds||[]).map(cid=>{const t=S.speseCarta.find(x=>x.id===cid);if(!t)return '';const invs=(t.fatturaIds||[]).map(fid=>{const f=S.fattureEl.find(x=>x.id===fid);return f?(esc(f.controparteNome||'—')+' · <span class="golink" onclick="event.stopPropagation();goHighlight(\'fattureEl\',\'fe-'+f.id+'\')">N.'+esc(f.numero||'?')+(f.data?' del '+dmy(f.data):'')+' ↗</span>'):'';}).filter(Boolean);if(invs.length)return invs.join('<br>');return `<span style="color:var(--warn)">${esc((t.descrizione||'spesa').slice(0,28))} · da ric.</span>`;}).filter(Boolean);return `<span class="pill ok">Riconciliato</span><div class="sub" style="line-height:1.4"><span class="golink" onclick="event.stopPropagation();cartaVaiSpese('${m.id}')">Carta ${esc(mLabelBancaMese(m.cartaMese))} ↗</span>${lines.length?'<br>'+lines.join('<br>'):''}</div>`;}
       const lk=(m.fatturaIds||[]).map(fid=>{const f=S.fattureEl.find(x=>x.id===fid);return f?`<span class="golink" onclick="event.stopPropagation();goHighlight('fattureEl','fe-${f.id}')">N.${esc(f.numero||'?')}${f.data?' del '+dmy(f.data):''} ↗</span>`:'';}).filter(Boolean).join(', ');
-      const ai=movAbbuonoInfo(m);
-      const rr=ai?`<div class="sub" style="color:${ai.gain?'var(--ok)':'var(--warn)'}">${ai.src==='own'?((ai.gain?'abbuono attivo':'abbuono passivo')+' € '+eur(ai.amt)):('abbuono € '+eur(ai.amt)+' (fattura N.'+esc((ai.fatt&&ai.fatt.numero)||'?')+')')}</div>`:'';
+      const rrRaw=round2(movResiduoRic(m));const tipoR=m.residuoTipo||'abbuono';let rr='';
+      if(Math.abs(rrRaw)>0.005){
+        if(tipoR==='fuoriArchivio')rr=`<div class="sub" style="color:var(--ok)">€ ${eur(Math.abs(rrRaw))} a copertura di fatture non in archivio (ante 2025)</div>`;
+        else if(tipoR==='commissione')rr=`<div class="sub">di cui commissione banca € ${eur(Math.abs(rrRaw))}</div>`;
+        else{const ai=movAbbuonoInfo(m);rr=ai?`<div class="sub" style="color:${ai.gain?'var(--ok)':'var(--warn)'}">${ai.src==='own'?((ai.gain?'abbuono attivo':'abbuono passivo')+' € '+eur(ai.amt)):('abbuono € '+eur(ai.amt)+' (fattura N.'+esc((ai.fatt&&ai.fatt.numero)||'?')+')')}</div>`:'';}
+        rr+=`<div class="sub"><select onchange="event.stopPropagation();bancaSetResiduoTipo('${m.id}',this.value)" style="font-size:11px;max-width:100%">${[['abbuono','abbuono'],['fuoriArchivio','fatture non in archivio'],['commissione','commissione banca']].map(o=>`<option value="${o[0]}"${tipoR===o[0]?' selected':''}>differenza € ${eur(Math.abs(rrRaw))}: ${o[1]}</option>`).join('')}</select></div>`;
+      }
       return `<span class="pill ok">Riconciliato</span>${lk?`<div class="sub">${lk}</div>`:''}${rr}`;}
     if(m.categoria)return `<span class="pill ok" style="white-space:normal;display:inline-block;max-width:100%">${esc(m.categoria)}</span>`;
     return `<span class="pill warn">Da riconciliare</span>`;

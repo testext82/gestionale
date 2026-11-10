@@ -3905,9 +3905,9 @@ function stampaRegistroRif(){
 const filtriSC={dir:'',stato:''};
 function scadItems(){
   const out=[];
-  S.fatture.filter(f=>!f.incassata).forEach(f=>out.push({dir:'incasso',data:f.scadenza||'',importo:num(f.totale),desc:`Fattura ${f.numero}/${f.anno}`,contro:clienteName(f.clienteId)||'',origine:'Fattura interna',kind:'fint',id:f.id}));
+  S.fatture.filter(f=>!f.incassata).forEach(f=>out.push({dir:'incasso',data:f.scadenza||'',importo:num(f.totale),desc:`Fattura ${f.numero}/${f.anno}`,contro:clienteName(f.clienteId)||'',origine:'Fattura interna',kind:'fint',id:f.id,feId:(fatturaFE(f)||{}).id||''}));
   S.fattureEl.filter(f=>!f.pagata).forEach(f=>{const dir=f.tipo==='attiva'?'incasso':'pagamento';const scad=(f.pagamenti&&f.pagamenti[0]&&f.pagamenti[0].scadenza)?f.pagamenti[0].scadenza:(f.data||'');
-    out.push({dir,data:scad,importo:feResiduo(f),desc:`Fattura ${f.numero||''}`,contro:f.controparteNome||'',origine:'Fattura elettronica',kind:'fel',id:f.id});});
+    out.push({dir,data:scad,importo:feResiduo(f),desc:`Fattura ${f.numero||''}`,contro:f.controparteNome||'',origine:'Fattura elettronica',kind:'fel',id:f.id,feId:f.id});});
   return out;
 }
 function scadFiltra(){
@@ -3952,7 +3952,7 @@ function renderScadenzario(c){
           <tbody>${rows.map(r=>`<tr>
             <td>${cell(r)}</td>
             <td><span class="pill ${r.dir==='incasso'?'ok':'danger'}">${r.dir==='incasso'?'Incasso':'Pagamento'}</span></td>
-            <td>${esc(r.desc)}</td><td>${esc(r.contro||'—')}</td><td class="sub">${esc(r.origine)}</td>
+            <td>${esc(r.desc)}${r.feId?`<div class="sub"><span class="golink" onclick="goHighlight('fattureEl','fe-${r.feId}')">vedi fattura elettronica ↗</span></div>`:''}</td><td>${esc(r.contro||'—')}</td><td class="sub">${esc(r.origine)}</td>
             <td class="num strong">€ ${eur(r.importo)}</td>
             <td class="actions"><button class="btn sm" onclick="scadSaldaItem('${r.kind}','${r.id}')">Segna ${r.dir==='incasso'?'incassata':'pagata'}</button></td>
           </tr>`).join('')}</tbody></table>`}

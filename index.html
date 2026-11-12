@@ -914,6 +914,7 @@ const NAV=[
   {id:'cartaCredito',label:'Carta di credito',ico:'card',badge:()=>S.speseCarta.length},
   {id:'primaNota',label:'Prima Nota',ico:'card',badge:()=>S.primaNota.length,hidden:()=>!PN_ENABLED},
   {id:'scadenzario',label:'Scadenzario incassi/pagamenti',ico:'card'},
+  {id:'liqIva',label:'Liquidazione IVA',ico:'calendar',badge:()=>ivaNavBadge()},
   {id:'docamm',label:'Documenti amministrativi',ico:'clip',badge:()=>S.docamm.length},
   {id:'sicurezza',label:'Sicurezza e scadenze',ico:'shield',badge:()=>S.sicurezza.length+S.scadenze.length},
   {id:'rifornimenti',label:'Rifornimenti carburante',ico:'truck',badge:()=>S.rifornimenti.length},
@@ -1007,6 +1008,7 @@ const TITLES={
   scadenzario:['Scadenzario incassi/pagamenti','Cosa devi incassare e cosa devi pagare, da fatture interne ed elettroniche'],
   analisiCosti:['Analisi costi','Analisi dei costi dalle fatture elettroniche passive, per fornitore e periodo'],
   conferimenti:['Registro conferimenti R10','Registro dei conferimenti di terre e rocce da scavo per E.E.R., produttore e periodo'],
+  liqIva:['Liquidazione IVA','Liquidazione periodica: IVA a debito e detraibile (pro-rata e indetraibilità), riporti, interessi, scadenze F24 e registri'],
   report:['Report e analisi','Statistiche (fatturato, incassi, IVA) e analisi costi fornitori, in un unico posto'],
   contrattiRA:['Contratti R.A.','Contratti per il conferimento di terre e rocce da scavo (recupero ambientale) — EER 17.05.04'],
   clienti:['Clienti','Anagrafica clienti'],
@@ -1034,7 +1036,7 @@ function render(){
   const c=document.getElementById('content');
   const genericEntities=['clienti','destinazioni','unitaMisura','mezzi','causali','compilatori','modalitaPagamento','contratti','aspetti'];
   if(genericEntities.includes(current)) renderEntity(current,c);
-  else ({dashboard:renderDashboard,listini:renderListini,ddt:renderDDT,fatture:renderFatture,scadenze:sicScadWrap,sicurezza:sicScadWrap,docamm:renderDocAmm,primaNota:renderPrimaNota,report:renderReport,fattureEl:renderFattureEl,scadenzario:renderScadenzario,analisiCosti:renderAnalisiCosti,conferimenti:renderConferimenti,rifornimenti:renderRifornimenti,contrattiRA:renderContrattiRA,banca:renderBanca,cartaCredito:renderCartaCredito,clienteScheda:renderClienteScheda,impostazioni:renderImpostazioni}[current]||(()=>{}))(c);
+  else ({dashboard:renderDashboard,listini:renderListini,ddt:renderDDT,fatture:renderFatture,scadenze:sicScadWrap,sicurezza:sicScadWrap,docamm:renderDocAmm,primaNota:renderPrimaNota,report:renderReport,fattureEl:renderFattureEl,scadenzario:renderScadenzario,liqIva:renderLiqIva,analisiCosti:renderAnalisiCosti,conferimenti:renderConferimenti,rifornimenti:renderRifornimenti,contrattiRA:renderContrattiRA,banca:renderBanca,cartaCredito:renderCartaCredito,clienteScheda:renderClienteScheda,impostazioni:renderImpostazioni}[current]||(()=>{}))(c);
   renderNav();
   if(sf!=null){const el=document.querySelector('[data-sf="'+sf+'"]');if(el){el.focus();try{el.setSelectionRange(ss,se);}catch(e){}}}
 }
@@ -3907,6 +3909,9 @@ function scadItems(){
   S.fatture.filter(f=>!f.incassata).forEach(f=>out.push({dir:'incasso',data:f.scadenza||'',importo:num(f.totale),desc:`Fattura ${f.numero}/${f.anno}`,contro:clienteName(f.clienteId)||'',origine:'Fattura interna',kind:'fint',id:f.id,feId:(fatturaFE(f)||{}).id||''}));
   S.fattureEl.filter(f=>!f.pagata).forEach(f=>{const dir=f.tipo==='attiva'?'incasso':'pagamento';const scad=(f.pagamenti&&f.pagamenti[0]&&f.pagamenti[0].scadenza)?f.pagamenti[0].scadenza:(f.data||'');
     out.push({dir,data:scad,importo:feResiduo(f),desc:`Fattura ${f.numero||''}`,contro:f.controparteNome||'',origine:'Fattura elettronica',kind:'fel',id:f.id,feId:f.id});});
+  // IVA da versare (liquidazione periodica chiusa, non ancora registrata come versata, scadenza da oggi in poi)
+  try{const t=today();[String(+t.slice(0,4)-1),t.slice(0,4)].forEach(a=>ivaLiqCalc(a).forEach(p=>{
+    if(p.daVersare>0&&!p.versato&&p.a<t&&p.scad>=t)out.push({dir:'pagamento',data:p.scad,importo:p.daVersare,desc:`IVA ${p.lab} ${a} · F24 cod. ${p.codice}${p.annuale?' (saldo annuale)':''}`,contro:'Erario',origine:'Liquidazione IVA',kind:'iva',id:p.k});}));}catch(e){}
   return out;
 }
 function scadFiltra(){
@@ -3918,7 +3923,7 @@ function scadFiltra(){
   if(term)rows=rows.filter(r=>[r.desc,r.contro,r.origine].filter(Boolean).join(' ').toLowerCase().includes(term));
   return rows.sort((a,b)=>(a.data||'9999').localeCompare(b.data||'9999'));
 }
-function scadSaldaItem(kind,id){ if(kind==='fint')fatturaToggleIncasso(id); else feToggleStato(id); }
+function scadSaldaItem(kind,id){ if(kind==='iva'){ivaVersatoDialog(id.slice(0,4),id);return;} if(kind==='fint')fatturaToggleIncasso(id); else feToggleStato(id); }
 function renderScadenzario(c){
   const rows=scadFiltra(),t=today();
   const inc=scadItems().filter(r=>r.dir==='incasso'),pag=scadItems().filter(r=>r.dir==='pagamento');
@@ -3951,9 +3956,9 @@ function renderScadenzario(c){
           <tbody>${rows.map(r=>`<tr>
             <td>${cell(r)}</td>
             <td><span class="pill ${r.dir==='incasso'?'ok':'danger'}">${r.dir==='incasso'?'Incasso':'Pagamento'}</span></td>
-            <td>${esc(r.desc)}${r.feId?`<div class="sub"><span class="golink" onclick="goHighlight('fattureEl','fe-${r.feId}')">vedi fattura elettronica ↗</span></div>`:''}</td><td>${esc(r.contro||'—')}</td><td class="sub">${esc(r.origine)}</td>
+            <td>${esc(r.desc)}${r.feId?`<div class="sub"><span class="golink" onclick="goHighlight('fattureEl','fe-${r.feId}')">vedi fattura elettronica ↗</span></div>`:''}${r.kind==='iva'?`<div class="sub"><span class="golink" onclick="liqAnno='${r.id.slice(0,4)}';liqSel='${r.id}';go('liqIva')">apri liquidazione ↗</span></div>`:''}</td><td>${esc(r.contro||'—')}</td><td class="sub">${esc(r.origine)}</td>
             <td class="num strong">€ ${eur(r.importo)}</td>
-            <td class="actions"><button class="btn sm" onclick="scadSaldaItem('${r.kind}','${r.id}')">Segna ${r.dir==='incasso'?'incassata':'pagata'}</button></td>
+            <td class="actions"><button class="btn sm" onclick="scadSaldaItem('${r.kind}','${r.id}')">${r.kind==='iva'?'Segna versata':'Segna '+(r.dir==='incasso'?'incassata':'pagata')}</button></td>
           </tr>`).join('')}</tbody></table>`}
     </div>`;
 }
@@ -5170,17 +5175,25 @@ function ivaDetrDialog(y){
       · <b>60%</b> veicoli non strumentali e relative spese (pedaggi, Telepass, tagliandi, riparazioni, carburante dell&rsquo;auto) — lett. c<br>
       · <b>100%</b> spese di rappresentanza (pranzi, omaggi) — lett. h<br>
       · <b>0%</b> telefonia, carburante dei mezzi d&rsquo;opera, beni e servizi dell&rsquo;attività (lasciare vuoto)</div></div>
-    <div class="field" style="max-width:260px"><label>Pro-rata di detraibilità ${y} (%)</label><input id="iva-pr" type="number" min="0" max="100" step="1" value="${ivaProrata(y)}"></div>
+    <div class="form-grid" style="grid-template-columns:repeat(3,1fr)">
+      <div class="field"><label>Periodicità liquidazioni</label><select id="iva-per"><option value="trim" ${ivaPeriodicita()==='trim'?'selected':''}>Trimestrale (per opzione)</option><option value="mese" ${ivaPeriodicita()==='mese'?'selected':''}>Mensile</option></select></div>
+      <div class="field"><label>Pro-rata di detraibilità ${y} (%)</label><input id="iva-pr" type="number" min="0" max="100" step="1" value="${ivaProrata(y)}"></div>
+      <div class="field"><label>Credito IVA ${+y-1} usato nelle liquidazioni ${y} (€)</label><input id="iva-ci" type="number" step="0.01" min="0" value="${num(((S.settings&&S.settings.ivaCreditoIniz)||{})[y])||''}" placeholder="0"></div>
+    </div>
+    <div class="sub" style="margin:-4px 0 10px">Credito dell&rsquo;anno precedente: solo la parte portata in detrazione nella prima liquidazione (non quella compensata in F24). Se non lo sai, lascia vuoto.</div>
     <div class="section-label">IVA indetraibile per fornitore</div>
     <div style="max-height:46vh;overflow:auto"><table><thead><tr><th>Fornitore</th><th class="num">IVA ${y}</th><th class="num">% indetraibile</th></tr></thead><tbody>
     ${arr.length?arr.map(o=>`<tr><td>${esc(o.nome)} <span class="sub">(${o.n} fatt.)</span></td><td class="num">€ ${eur(o.iva)}</td><td class="num"><input class="iva-ind" data-k="${esc(o.k)}" type="number" min="0" max="100" step="1" value="${num(cfg[o.k])>0?num(cfg[o.k]):''}" placeholder="0" style="width:80px;text-align:right"></td></tr>`).join(''):'<tr><td colspan="3" class="sub">Nessuna fattura passiva nell&rsquo;anno.</td></tr>'}
     </tbody></table></div>`;
-  openModal('Detraibilità IVA acquisti '+y,body,()=>{
+  openModal('Impostazioni IVA '+y,body,()=>{
     S.settings=S.settings||{};
     const prV=document.getElementById('iva-pr').value;
     const prObj=Object.assign({},S.settings.ivaProrata||{});
     if(prV===''||num(prV)>=100)delete prObj[y];else prObj[y]=Math.max(0,num(prV));
     S.settings.ivaProrata=prObj;
+    S.settings.ivaPeriodicita=document.getElementById('iva-per').value==='mese'?'mese':'trim';
+    const ciV=num(document.getElementById('iva-ci').value),ciObj=Object.assign({},S.settings.ivaCreditoIniz||{});
+    if(ciV>0)ciObj[y]=round2(ciV);else delete ciObj[y];S.settings.ivaCreditoIniz=ciObj;
     const ind=Object.assign({},cfg);
     document.querySelectorAll('.iva-ind').forEach(inp=>{const k=inp.getAttribute('data-k');const v=num(inp.value);if(v>0)ind[k]=Math.min(100,v);else delete ind[k];});
     S.settings.ivaIndetr=ind;
@@ -5188,6 +5201,278 @@ function ivaDetrDialog(y){
     persist();render();toast('Detraibilità IVA aggiornata');return true;
   },{wide:true});
 }
+/* ===================== LIQUIDAZIONE IVA ===================== */
+/* Liquidazione periodica (art. 27 DPR 633/72; trimestrali per opzione art. 7 DPR 542/99: interessi 1%).
+   Competenza: data del documento, salvo "data IVA" impostata sulla singola fattura
+   (es. fattura d'acquisto ricevuta dopo il 15 del mese successivo, art. 1 DPR 100/1998). */
+let liqAnno=String(new Date().getFullYear()),liqSel='',liqShowDoc=false;
+const IVA_MESI=['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+function ivaPeriodicita(){return (S.settings&&S.settings.ivaPeriodicita)==='mese'?'mese':'trim';}
+function feDataIva(f){return f.dataIva||f.data||'';}
+function ivaVers(){return (S.settings&&S.settings.ivaVersamenti)||{};}
+function ivaShift(s,n){const d=new Date(s+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);}
+/* scadenza che cade di sabato o domenica: slitta al lunedì */
+function ivaFeriale(y,m,d){const dt=new Date(Date.UTC(y,m-1,d));const wd=dt.getUTCDay();if(wd===6)dt.setUTCDate(dt.getUTCDate()+2);else if(wd===0)dt.setUTCDate(dt.getUTCDate()+1);return dt.toISOString().slice(0,10);}
+function ivaPeriodi(anno){
+  const y=+anno,p2=n=>String(n).padStart(2,'0'),fine=(yy,m)=>new Date(Date.UTC(yy,m,0)).getUTCDate();
+  if(ivaPeriodicita()==='trim'){
+    const sc=[[y,5,16],[y,8,20],[y,11,16],[y+1,3,16]],cod=['6031','6032','6033','6099'];
+    return [1,2,3,4].map(q=>({k:anno+'-T'+q,lab:q+'º trimestre',breve:q+'º trim.',da:`${anno}-${p2(q*3-2)}-01`,a:`${anno}-${p2(q*3)}-${p2(fine(y,q*3))}`,
+      scad:ivaFeriale(...sc[q-1]),codice:cod[q-1],ultimo:q===4,annuale:q===4}));
+  }
+  return IVA_MESI.map((l,i)=>{const m=i+1;const sc=m===12?[y+1,1,16]:(m===7?[y,8,20]:[y,m+1,16]);
+    return {k:anno+'-M'+p2(m),lab:l,breve:l.slice(0,3),da:`${anno}-${p2(m)}-01`,a:`${anno}-${p2(m)}-${p2(fine(y,m))}`,scad:ivaFeriale(...sc),codice:'60'+p2(m),ultimo:m===12,annuale:false};});
+}
+/* Calcolo di tutte le liquidazioni dell'anno, in sequenza (il credito passa al periodo successivo;
+   un debito fino a 25,82 € non si versa e si somma al periodo successivo, art. 1 c.4 DPR 100/1998). */
+function ivaLiqCalc(anno){
+  anno=String(anno);
+  const per=ivaPeriodi(anno),pr=ivaProrata(anno),trim=ivaPeriodicita()==='trim';
+  const fe=S.fattureEl.filter(f=>String(feDataIva(f)).slice(0,4)===anno);
+  const credIniz=round2(num(((S.settings&&S.settings.ivaCreditoIniz)||{})[anno]||0));
+  const acc=ivaVers()[anno+'-ACC'],accontoV=acc?round2(num(acc.importo)):0;
+  let cred=credIniz,debR=0;
+  return per.map(p=>{
+    const inP=f=>{const d=feDataIva(f);return d>=p.da&&d<=p.a;};
+    const att=fe.filter(f=>f.tipo==='attiva'&&inP(f)),pas=fe.filter(f=>f.tipo==='passiva'&&inP(f));
+    const deb=round2(att.reduce((s,f)=>s+feIvaS(f),0));
+    const lordo=round2(pas.reduce((s,f)=>s+feIvaS(f),0));
+    const ind=round2(pas.reduce((s,f)=>s+feIvaIndetr(f),0));
+    const detr=round2(lordo-ind),cre=round2(detr*pr/100);
+    const credPrec=cred,debPrec=debR,acconto=p.ultimo?accontoV:0;
+    const ris=round2(deb-cre-credPrec+debPrec-acconto);
+    let interessi=0,daVersare=0,sotto=false;
+    if(ris>0.004){
+      if(ris<=25.82&&!p.ultimo){sotto=true;debR=ris;cred=0;}
+      else{interessi=trim?round2(ris*0.01):0;daVersare=round2(ris+interessi);debR=0;cred=0;}
+    }else{cred=round2(-ris);debR=0;}
+    return {...p,anno,att,pas,deb,lordo,ind,detr,pr,cre,credPrec,debPrec,acconto,ris,interessi,daVersare,sotto,
+      credito:ris<-0.004?round2(-ris):0,versato:ivaVers()[p.k]||null,haDati:(att.length+pas.length)>0};
+  });
+}
+/* Registri del periodo per aliquota/natura (vendite; acquisti con quota detraibile e indetraibile) */
+function ivaRegistri(P){
+  const vend={},acq={};let fuoriV=0,fuoriA=0;
+  const add=(m,f,r,isAcq)=>{const sg=feSgn(f),al=num(r.aliquota),nat=al?'':String(r.natura||'');const k=al+'|'+nat;
+    const o=(m[k]=m[k]||{aliquota:al,natura:nat,imp:0,iva:0,impI:0,ivaI:0});
+    const imp=sg*num(r.imponibile),iva=sg*num(r.imposta),p=isAcq?ivaIndetrPerc(f):0;
+    o.imp+=imp;o.iva+=iva;if(p){o.impI+=round2(imp*p/100);o.ivaI+=round2(iva*p/100);}};
+  P.att.forEach(f=>{(f.aliquote||[]).forEach(r=>add(vend,f,r,false));fuoriV+=feSgn(f)*feFuoriRiep(f);});
+  P.pas.forEach(f=>{(f.aliquote||[]).forEach(r=>add(acq,f,r,true));fuoriA+=feSgn(f)*feFuoriRiep(f);});
+  const ord=o=>Object.values(o).filter(x=>Math.abs(x.imp)>0.004||Math.abs(x.iva)>0.004)
+    .sort((a,b)=>((a.aliquota?0:1)-(b.aliquota?0:1))||(a.aliquota-b.aliquota)||a.natura.localeCompare(b.natura));
+  return {vend:ord(vend),acq:ord(acq),fuoriV:round2(fuoriV),fuoriA:round2(fuoriA)};
+}
+function ivaLabAl(x){return x.aliquota?x.aliquota+'%':feNaturaLabel(x.natura);}
+function ivaStatoPill(p){
+  const t=today();
+  if(p.versato)return `<span class="pill ok">Versato ${p.versato.data?dmy(p.versato.data):''}</span>`;
+  if(!p.haDati&&p.da>t)return '<span class="pill grey">da iniziare</span>';
+  if(p.a>=t)return '<span class="pill grey">in corso</span>';
+  if(p.daVersare>0){
+    if(p.annuale)return '<span class="pill accent">con saldo annuale</span>';
+    if(p.scad<t)return '<span class="pill warn">versamento da registrare</span>';
+    return `<span class="pill danger">da versare entro ${dmy(p.scad)}</span>`;}
+  if(p.sotto)return '<span class="pill grey">sotto 25,82 €, riportato</span>';
+  if(p.credito>0)return '<span class="pill ok">a credito</span>';
+  return '<span class="pill grey">nessun versamento</span>';
+}
+/* Acconto IVA di dicembre (art. 6 L. 405/1990): stime con i tre metodi, scelta da confermare col commercialista */
+function ivaAccontoStima(anno){
+  const prev=ivaLiqCalc(String(+anno-1)),cur=ivaLiqCalc(anno);
+  const lp=prev[prev.length-1],lc=cur[cur.length-1];
+  const storico=lp.haDati?round2(Math.max(0,lp.ris+lp.acconto)*0.88):null;
+  // analitico: operazioni dall'inizio dell'ultimo periodo al 20 dicembre, con il credito/debito riportato
+  const da=lc.da,a=anno+'-12-20';
+  const fe=S.fattureEl.filter(f=>{const d=feDataIva(f);return d>=da&&d<=a;});
+  const deb=fe.filter(f=>f.tipo==='attiva').reduce((s,f)=>s+feIvaS(f),0);
+  const pas=fe.filter(f=>f.tipo==='passiva');
+  const cre=(pas.reduce((s,f)=>s+feIvaS(f),0)-pas.reduce((s,f)=>s+feIvaIndetr(f),0))*ivaProrata(anno)/100;
+  const analitico=round2(Math.max(0,deb-cre-lc.credPrec+lc.debPrec));
+  return {storico,analitico,scad:ivaFeriale(+anno,12,27),annoPrec:String(+anno-1),prorataPrecImpostato:!!(S.settings&&S.settings.ivaProrata&&S.settings.ivaProrata[String(+anno-1)])};
+}
+function ivaNavBadge(){
+  try{const t=today();let n=0;[String(+t.slice(0,4)-1),t.slice(0,4)].forEach(a=>ivaLiqCalc(a).forEach(p=>{if(p.daVersare>0&&!p.versato&&!p.annuale&&p.a<t&&p.scad>=t)n++;}));return n;}catch(e){return 0;}
+}
+
+function renderLiqIva(c){
+  const anni=feAnni();if(!anni.includes(liqAnno))liqAnno=anni[0];
+  const L=ivaLiqCalc(liqAnno),t=today(),trim=ivaPeriodicita()==='trim';
+  if(!liqSel||!L.find(p=>p.k===liqSel)){
+    const chiusi=L.filter(p=>p.haDati&&p.a<t);
+    const dovuto=chiusi.find(p=>p.scad>=t);
+    liqSel=(dovuto||chiusi[chiusi.length-1]||L.filter(p=>p.haDati).slice(-1)[0]||L[0]).k;}
+  const P=L.find(p=>p.k===liqSel),R=ivaRegistri(P),prTxt=String(P.pr).replace('.',',');
+  setActions(`<select onchange="liqAnno=this.value;liqSel='';render()">${anni.map(a=>`<option ${a===liqAnno?'selected':''}>${a}</option>`).join('')}</select>
+    <button class="btn" onclick="ivaDetrDialog('${liqAnno}')">${svg(IC.settings)} Impostazioni IVA</button>
+    <button class="btn" onclick="stampaLiqIva('${liqAnno}','${P.k}')">${svg(IC.print)} Stampa prospetto</button>`);
+  const eurS=v=>(v<0?'− ':'')+'€ '+eur(Math.abs(v));
+  const tabs=`<div class="seg" style="flex-wrap:wrap;margin-bottom:14px">${L.map(p=>`<button class="btn sm ${p.k===P.k?'primary':''}" onclick="liqSel='${p.k}';render()">${trim?p.lab:p.breve}${p.daVersare>0&&!p.versato?' •':''}</button>`).join('')}</div>`;
+  const esito=P.daVersare>0?{k:'Da versare',v:'€ '+eur(P.daVersare),c:'danger',s:P.annuale?'con il saldo IVA annuale entro '+dmy(P.scad):'entro '+dmy(P.scad)+' · F24 cod. '+P.codice}
+    :P.credito>0?{k:'A credito',v:'€ '+eur(P.credito),c:'ok',s:P.ultimo?'credito dell’anno: in dichiarazione annuale':'riportato al periodo successivo'}
+    :P.sotto?{k:'Debito sotto soglia',v:'€ '+eur(P.ris),c:'',s:'non si versa (≤ 25,82 €): si somma al periodo successivo'}
+    :{k:'Risultato',v:'€ 0,00',c:'',s:'nessun versamento'};
+  const riga=(l,v,o={})=>`<tr${o.top?' style="border-top:2px solid var(--line)"':''}><td${o.b?' class="strong"':''}>${l}</td><td class="num${o.b?' strong':''}"${o.c?` style="color:var(--${o.c})"`:''}>${v}</td></tr>`;
+  const prospetto=`<table><tbody>
+      ${riga('IVA a debito del periodo (vendite)','€ '+eur(P.deb))}
+      ${riga('IVA sugli acquisti','€ '+eur(P.lordo))}
+      ${P.ind?riga('− IVA indetraibile (art. 19-bis1)','− € '+eur(P.ind)):''}
+      ${riga('IVA detraibile','€ '+eur(P.detr))}
+      ${riga(`IVA a credito del periodo${P.pr!==100?` (pro-rata ${prTxt}%)`:''}`,'€ '+eur(P.cre),{b:true})}
+      ${P.credPrec?riga('Credito del periodo precedente','− € '+eur(P.credPrec)):''}
+      ${P.debPrec?riga('Debito riportato (sotto 25,82 €)','+ € '+eur(P.debPrec)):''}
+      ${P.acconto?riga('Acconto IVA versato a dicembre','− € '+eur(P.acconto)):''}
+      ${riga(P.ris>0?'IVA a debito':'IVA a credito',`€ ${eur(Math.abs(P.ris))}`,{b:true,top:true,c:P.ris>0?'danger':'ok'})}
+      ${P.interessi?riga('Interessi 1% (trimestrali per opzione)','+ € '+eur(P.interessi)):''}
+      ${P.daVersare>0?riga('Totale da versare','€ '+eur(P.daVersare),{b:true,c:'danger'}):''}
+      ${P.credito>0?riga(P.ultimo?'Credito IVA dell’anno':'IVA da riportare nel periodo successivo','€ '+eur(P.credito),{b:true,c:'ok'}):''}
+      ${P.daVersare>0?riga('Scadenza F24',`${dmy(P.scad)} · cod. tributo ${P.codice} · anno ${P.anno}`):''}
+    </tbody></table>
+    <div class="toolbar" style="margin-top:12px;gap:8px;flex-wrap:wrap">${ivaStatoPill(P)}<div style="flex:1"></div>
+      ${P.daVersare>0||P.versato?`<button class="btn sm ${P.versato?'':'primary'}" onclick="ivaVersatoDialog('${P.anno}','${P.k}')">${P.versato?'Modifica versamento':'Segna versato'}</button>`:''}</div>
+    ${P.annuale&&P.daVersare>0?'<div class="sub" style="margin-top:8px">Trimestrali per opzione: il 4º trimestre si versa con il saldo della dichiarazione IVA annuale. Importo indicativo, al netto dell’acconto registrato.</div>':''}`;
+  const cal=`<div style="overflow-x:auto"><table><thead><tr><th>Periodo</th><th class="num">Debito</th><th class="num">Credito</th><th class="num">Risultato</th><th class="num">Da versare</th><th>Scadenza</th><th>Stato</th></tr></thead><tbody>
+    ${L.map(p=>`<tr style="cursor:pointer;${p.k===P.k?'background:var(--accent-soft)':''}" onclick="liqSel='${p.k}';render()">
+      <td class="strong">${trim?p.breve:p.lab}</td><td class="num">${p.haDati?'€ '+eur(p.deb):'—'}</td><td class="num">${p.haDati?'€ '+eur(p.cre):'—'}</td>
+      <td class="num" style="color:var(--${p.ris>0?'danger':'ok'})">${p.haDati||p.credPrec?eurS(p.ris):'—'}</td>
+      <td class="num strong">${p.daVersare>0?'€ '+eur(p.daVersare):'—'}</td><td class="sub">${dmy(p.scad)}</td><td>${ivaStatoPill(p)}</td></tr>`).join('')}
+    </tbody></table></div>`;
+  const tabV=`<table><thead><tr><th>Aliquota / Natura</th><th class="num">Imponibile</th><th class="num">Imposta</th></tr></thead><tbody>
+    ${R.vend.map(x=>`<tr><td>${esc(ivaLabAl(x))}</td><td class="num">€ ${eur(x.imp)}</td><td class="num">€ ${eur(x.iva)}</td></tr>`).join('')||'<tr><td colspan="3" class="sub">Nessuna fattura di vendita nel periodo.</td></tr>'}
+    ${R.fuoriV?`<tr><td>Bollo / arrotondamenti</td><td class="num">€ ${eur(R.fuoriV)}</td><td class="num">€ 0,00</td></tr>`:''}</tbody>
+    <tfoot><tr style="border-top:2px solid var(--line);font-weight:700"><td>Totale</td><td class="num">€ ${eur(R.vend.reduce((s,x)=>s+x.imp,0)+R.fuoriV)}</td><td class="num">€ ${eur(P.deb)}</td></tr></tfoot></table>`;
+  const sA=k=>R.acq.reduce((s,x)=>s+x[k],0);
+  const tabA=`<div style="overflow-x:auto"><table><thead><tr><th>Aliquota / Natura</th><th class="num">Imp. detraibile</th><th class="num">IVA detraibile</th><th class="num">Imp. indetraibile</th><th class="num">IVA indetraibile</th></tr></thead><tbody>
+    ${R.acq.map(x=>`<tr><td>${esc(ivaLabAl(x))}</td><td class="num">€ ${eur(x.imp-x.impI)}</td><td class="num">€ ${eur(x.iva-x.ivaI)}</td><td class="num">${x.impI?'€ '+eur(x.impI):'—'}</td><td class="num">${x.ivaI?'€ '+eur(x.ivaI):'—'}</td></tr>`).join('')||'<tr><td colspan="5" class="sub">Nessuna fattura d’acquisto nel periodo.</td></tr>'}
+    ${R.fuoriA?`<tr><td>Bollo / arrotondamenti</td><td class="num">€ ${eur(R.fuoriA)}</td><td class="num">€ 0,00</td><td class="num">—</td><td class="num">—</td></tr>`:''}</tbody>
+    <tfoot><tr style="border-top:2px solid var(--line);font-weight:700"><td>Totale</td><td class="num">€ ${eur(sA('imp')-sA('impI')+R.fuoriA)}</td><td class="num">€ ${eur(P.detr)}</td><td class="num">€ ${eur(sA('impI'))}</td><td class="num">€ ${eur(P.ind)}</td></tr>
+    ${P.pr!==100?`<tr><td colspan="2" class="sub">Pro-rata ${prTxt}%</td><td class="num strong">€ ${eur(P.cre)}</td><td colspan="2"></td></tr>`:''}</tfoot></table></div>`;
+  const docs=[...P.att,...P.pas].sort((a,b)=>(a.tipo===b.tipo?0:(a.tipo==='attiva'?-1:1))||feDataIva(a).localeCompare(feDataIva(b)));
+  const tabDoc=`<div style="overflow-x:auto"><table><thead><tr><th>Data IVA</th><th>Numero</th><th>Controparte</th><th class="num">Imponibile</th><th class="num">IVA</th><th class="num">Indetr.</th><th class="num">IVA detraibile / a debito</th><th></th></tr></thead><tbody>
+    ${docs.map(f=>{const pi=f.tipo==='passiva'?ivaIndetrPerc(f):0,ii=f.tipo==='passiva'?feIvaIndetr(f):0;
+      return `<tr><td>${dmy(feDataIva(f))}${f.dataIva?`<div class="sub">doc. ${dmy(f.data)}</div>`:''}</td>
+        <td>${esc(f.numero||'—')}<div class="sub">${f.tipo==='attiva'?'Vendita':'Acquisto'}${feIsNC(f)?' · nota di credito':''}</div></td>
+        <td>${esc(f.controparteNome||'—')}</td><td class="num">€ ${eur(feImpS(f))}</td><td class="num">€ ${eur(feIvaS(f))}</td>
+        <td class="num">${pi?pi+'% · € '+eur(ii):'—'}</td><td class="num strong">€ ${eur(round2(feIvaS(f)-ii))}</td>
+        <td class="actions"><button class="btn sm" title="Cambia il periodo IVA di competenza" onclick="ivaDataDialog('${f.id}')">Data IVA</button></td></tr>`;}).join('')||'<tr><td colspan="8" class="sub">Nessun documento nel periodo.</td></tr>'}
+    </tbody></table></div>`;
+  const ac=ivaAccontoStima(liqAnno),accV=ivaVers()[liqAnno+'-ACC'];
+  const accBox=`<div class="card" style="margin-top:14px"><div class="card-head"><h2>Acconto IVA ${liqAnno}</h2><div style="flex:1"></div><span class="sub">scadenza ${dmy(ac.scad)} · F24 cod. 6035</span></div>
+    <div style="padding:14px 18px">
+      <table><tbody>
+        ${riga('Metodo storico — 88% del dovuto dell’ultimo periodo '+ac.annoPrec,ac.storico===null?'<span class="sub">dati '+ac.annoPrec+' non disponibili</span>':'€ '+eur(ac.storico))}
+        ${riga('Metodo analitico — liquidazione al 20 dicembre'+(t<liqAnno+'-12-20'?' (stima ad oggi)':''),'€ '+eur(ac.analitico))}
+        ${riga('Metodo previsionale — 88% del dovuto stimato per l’ultimo periodo','<span class="sub">da valutare col commercialista</span>')}
+      </tbody></table>
+      <div class="sub" style="margin-top:8px">Si sceglie il metodo più conveniente; non è dovuto se inferiore a 103,29 €. ${!ac.prorataPrecImpostato&&ac.storico!==null?'Il metodo storico usa i dati '+ac.annoPrec+' del gestionale senza pro-rata impostato per quell’anno: verificalo con la dichiarazione IVA.':''}</div>
+      <div class="toolbar" style="margin-top:10px;gap:8px">${accV?`<span class="pill ok">Acconto versato ${accV.data?dmy(accV.data):''} · € ${eur(accV.importo)}</span>`:'<span class="pill grey">acconto non registrato</span>'}<div style="flex:1"></div>
+        <button class="btn sm" onclick="ivaVersatoDialog('${liqAnno}','${liqAnno}-ACC')">${accV?'Modifica acconto':'Registra acconto versato'}</button></div>
+    </div></div>`;
+  const nInd=Object.values((S.settings&&S.settings.ivaIndetr)||{}).filter(v=>num(v)>0).length;
+  c.innerHTML=`
+    <div class="note">${svg(IC.calendar)}<div><b>${trim?'Liquidazione trimestrale (per opzione)':'Liquidazione mensile'}</b> · pro-rata ${liqAnno}: <b>${prTxt}%</b> · fornitori con IVA indetraibile: <b>${nInd}</b>${num(((S.settings&&S.settings.ivaCreditoIniz)||{})[liqAnno])?` · credito ${+liqAnno-1} portato in detrazione: <b>€ ${eur(S.settings.ivaCreditoIniz[liqAnno])}</b>`:''} · <span class="golink" onclick="ivaDetrDialog('${liqAnno}')">impostazioni</span></div></div>
+    ${tabs}
+    <div class="stat-grid" style="grid-template-columns:repeat(4,1fr)">
+      <div class="stat"><div class="k">${svg(IC.invoice)} IVA a debito</div><div class="v">€ ${eur(P.deb)}</div><div class="stat-sub">${P.att.length} fatture di vendita</div></div>
+      <div class="stat"><div class="k">${svg(IC.card)} IVA a credito</div><div class="v">€ ${eur(P.cre)}</div><div class="stat-sub">${P.pas.length} fatture d’acquisto${P.pr!==100?' · pro-rata '+prTxt+'%':''}</div></div>
+      <div class="stat"><div class="k">${svg(IC.list)} Dal periodo precedente</div><div class="v">${P.credPrec?'€ '+eur(P.credPrec):(P.debPrec?'€ '+eur(P.debPrec):'—')}</div><div class="stat-sub">${P.credPrec?'credito portato in detrazione':(P.debPrec?'debito sotto soglia da versare':'nessun riporto')}</div></div>
+      <div class="stat"><div class="k">${svg(IC.calendar)} ${esito.k}</div><div class="v"${esito.c?` style="color:var(--${esito.c})"`:''}>${esito.v}</div><div class="stat-sub">${esito.s}</div></div>
+    </div>
+    <div class="two-col">
+      <div class="card"><div class="card-head"><h2>Prospetto · ${P.lab} ${P.anno}</h2></div><div style="padding:14px 18px">${prospetto}</div></div>
+      <div class="card"><div class="card-head"><h2>Calendario ${liqAnno}</h2></div><div style="padding:14px 18px">${cal}</div></div>
+    </div>
+    <div class="card" style="margin-top:14px"><div class="card-head"><h2>Registri IVA · ${P.lab} ${P.anno}</h2></div>
+      <div class="two-col" style="padding:14px 18px"><div><div class="sub strong" style="margin-bottom:6px">Registro vendite</div>${tabV}</div><div><div class="sub strong" style="margin-bottom:6px">Registro acquisti</div>${tabA}</div></div></div>
+    <div class="card" style="margin-top:14px"><div class="card-head"><h2>Documenti del periodo (${docs.length})</h2><div style="flex:1"></div>
+      <button class="btn sm" onclick="liqShowDoc=!liqShowDoc;render()">${liqShowDoc?'Nascondi':'Mostra'}</button></div>
+      ${liqShowDoc?`<div style="padding:6px 18px 14px">${tabDoc}</div>`:''}</div>
+    ${accBox}
+    <p class="sub" style="margin:14px 2px 0">Prospetto di supporto calcolato dalle fatture elettroniche: la liquidazione ufficiale resta quella del commercialista. Competenza per data documento; le fatture d’acquisto ricevute dopo il 15 del mese successivo vanno spostate col pulsante «Data IVA» (art. 1 DPR 100/1998). Indetraibilità art. 19-bis1, pro-rata artt. 19 e 19-bis DPR 633/72.</p>`;
+}
+function ivaVersatoDialog(anno,k){
+  const isAcc=k.endsWith('-ACC'),P=isAcc?null:ivaLiqCalc(anno).find(p=>p.k===k);
+  const v=ivaVers()[k]||{},scad=P?P.scad:ivaFeriale(+anno,12,27);
+  const impDef=v.importo!=null?v.importo:(P?P.daVersare:'');
+  const d0=ivaShift(scad,-25),d1=ivaShift(scad,15);
+  const cand=S.movimentiBanca.filter(m=>{const d=String(m.dataContabile||m.data||'');return num(m.importo)<0&&d>=d0&&d<=d1&&/impost|tass|delega|f24|erario/i.test((m.categoria||'')+' '+(m.descrizione||''));})
+    .sort((a,b)=>String(a.dataContabile||a.data).localeCompare(String(b.dataContabile||b.data)));
+  const body=`<div class="note">${svg(IC.calendar)}<div>${isAcc?'Acconto IVA '+anno:'Liquidazione IVA '+esc(P.lab)+' '+anno} · scadenza <b>${dmy(scad)}</b>${P?' · cod. tributo <b>'+P.codice+'</b> · importo calcolato <b>€ '+eur(P.daVersare)+'</b>':' · cod. tributo <b>6035</b>'}. Lascia vuota la data per togliere la registrazione.</div></div>
+    <div class="form-grid" style="grid-template-columns:1fr 1fr">
+      <div class="field"><label>Data del versamento</label><input id="iv-data" type="date" value="${esc(v.data||'')}"></div>
+      <div class="field"><label>Importo IVA versato (€)</label><input id="iv-imp" type="number" step="0.01" value="${impDef!==''?impDef:''}"></div>
+    </div>
+    <div class="field"><label>Note (es. compensato con credito, F24 cumulativo)</label><input id="iv-note" value="${esc(v.note||'')}"></div>
+    ${cand.length?`<div class="section-label">F24 in banca vicino alla scadenza</div><div class="sub" style="margin-bottom:6px">Un F24 può contenere anche ritenute e contributi: l’importo IVA può essere solo una parte.</div>
+      <table><tbody>${cand.map(m=>{const d=String(m.dataContabile||m.data||'');return `<tr><td>${dmy(d)}</td><td class="num">€ ${eur(Math.abs(num(m.importo)))}</td><td class="sub">${esc(String(m.descrizione||m.categoria||'').slice(0,50))}</td><td class="actions"><span class="golink" onclick="document.getElementById('iv-data').value='${d}'">usa questa data</span></td></tr>`;}).join('')}</tbody></table>`:''}`;
+  openModal(isAcc?'Acconto IVA '+anno:'Versamento IVA · '+P.lab+' '+anno,body,()=>{
+    const d=document.getElementById('iv-data').value,imp=document.getElementById('iv-imp').value,note=(document.getElementById('iv-note').value||'').trim();
+    S.settings=S.settings||{};const vs=Object.assign({},S.settings.ivaVersamenti||{});
+    if(!d)delete vs[k];else vs[k]={data:d,importo:round2(num(imp)),note};
+    S.settings.ivaVersamenti=vs;
+    logAction(d?'Versamento IVA registrato':'Versamento IVA rimosso',(isAcc?'Acconto '+anno:P.lab+' '+anno)+(d?' · '+dmy(d)+' · € '+eur(num(imp)):''));
+    persist();render();toast(d?'Versamento registrato':'Registrazione rimossa');return true;});
+}
+function ivaDataDialog(id){
+  const f=S.fattureEl.find(x=>x.id===id);if(!f)return;
+  const body=`<div class="note">${svg(IC.calendar)}<div>La <b>data IVA</b> decide in quale liquidazione entra la fattura. Di norma è la data del documento.
+      Una fattura d’acquisto ricevuta <b>dopo il 15 del mese successivo</b> si detrae nel periodo di ricezione (art. 1 DPR 100/1998): imposta qui la data di ricezione.</div></div>
+    <div class="sub" style="margin-bottom:8px">${f.tipo==='attiva'?'Vendita':'Acquisto'} n. <b>${esc(f.numero||'')}</b> · ${esc(f.controparteNome||'')} · data documento <b>${dmy(f.data)}</b></div>
+    <div class="field" style="max-width:240px"><label>Data IVA (competenza)</label><input id="fi-data" type="date" value="${esc(feDataIva(f))}"></div>`;
+  openModal('Data IVA della fattura',body,()=>{
+    const v=document.getElementById('fi-data').value;
+    if(!v||v===f.data)delete f.dataIva;else f.dataIva=v;
+    logAction('Data IVA fattura',(f.numero||'')+' · '+(f.controparteNome||'')+' → '+dmy(feDataIva(f)));
+    persist();render();toast('Data IVA aggiornata');return true;});
+}
+function stampaLiqIva(anno,k){
+  const P=ivaLiqCalc(anno).find(p=>p.k===k);if(!P)return;const R=ivaRegistri(P);
+  const prTxt=String(P.pr).replace('.',',');
+  const sotto=`${P.lab} ${anno} · ${ivaPeriodicita()==='trim'?'trimestrale':'mensile'}${P.pr!==100?' · pro-rata '+prTxt+'%':''}`;
+  const r=(l,v,b)=>`<tr><td>${b?'<b>':''}${l}${b?'</b>':''}</td><td class="n">${b?'<b>':''}${v}${b?'</b>':''}</td></tr>`;
+  const h=t=>`<div style="font-weight:800;font-size:11px;margin:12px 0 3px;text-transform:uppercase;letter-spacing:.03em">${t}</div>`;
+  const sA=k2=>R.acq.reduce((s,x)=>s+x[k2],0);
+  const docs=[...P.att,...P.pas].sort((a,b)=>(a.tipo===b.tipo?0:(a.tipo==='attiva'?-1:1))||feDataIva(a).localeCompare(feDataIva(b)));
+  const html=`<div class="doc">${registroHead('LIQUIDAZIONE IVA',sotto)}
+    <div class="grid3">
+      <div class="mini"><div class="lab">IVA a debito</div><div class="val">€ ${eur(P.deb)}</div></div>
+      <div class="mini"><div class="lab">IVA a credito${P.pr!==100?' (pro-rata '+prTxt+'%)':''}</div><div class="val">€ ${eur(P.cre)}</div></div>
+      <div class="mini"><div class="lab">${P.daVersare>0?'Da versare entro '+dmy(P.scad):(P.credito>0?'Credito da riportare':'Risultato')}</div><div class="val">€ ${eur(P.daVersare>0?P.daVersare:(P.credito||Math.abs(P.ris)))}</div></div>
+    </div>
+    ${h('Totali IVA')}
+    <table class="goods"><tbody>
+      ${r('IVA a debito del periodo','€ '+eur(P.deb))}${r('IVA sugli acquisti','€ '+eur(P.lordo))}
+      ${P.ind?r('IVA indetraibile (art. 19-bis1)','− € '+eur(P.ind)):''}${r('IVA detraibile','€ '+eur(P.detr))}
+      ${r('IVA a credito del periodo'+(P.pr!==100?' (pro-rata '+prTxt+'%)':''),'€ '+eur(P.cre),true)}
+      ${P.credPrec?r('Credito del periodo precedente','− € '+eur(P.credPrec)):''}${P.debPrec?r('Debito riportato','+ € '+eur(P.debPrec)):''}${P.acconto?r('Acconto versato','− € '+eur(P.acconto)):''}
+      ${r(P.ris>0?'IVA a debito':'IVA a credito','€ '+eur(Math.abs(P.ris)),true)}
+      ${P.interessi?r('Interessi 1%','+ € '+eur(P.interessi)):''}
+      ${P.daVersare>0?r('Totale da versare · scadenza '+dmy(P.scad)+' · cod. '+P.codice,'€ '+eur(P.daVersare),true):''}
+      ${P.credito>0?r('IVA da riportare','€ '+eur(P.credito),true):''}
+      ${P.versato?r('Versato il '+dmy(P.versato.data),'€ '+eur(P.versato.importo)):''}
+    </tbody></table>
+    ${h('Registro vendite')}
+    <table class="goods"><thead><tr><th>Aliquota / Natura</th><th>Imponibile</th><th>Imposta</th></tr></thead><tbody>
+      ${R.vend.map(x=>`<tr><td>${esc(ivaLabAl(x))}</td><td class="n">€ ${eur(x.imp)}</td><td class="n">€ ${eur(x.iva)}</td></tr>`).join('')}
+      ${R.fuoriV?`<tr><td>Bollo / arrotondamenti</td><td class="n">€ ${eur(R.fuoriV)}</td><td class="n">€ 0,00</td></tr>`:''}
+      <tr><td><b>Totale</b></td><td class="n"><b>€ ${eur(R.vend.reduce((s,x)=>s+x.imp,0)+R.fuoriV)}</b></td><td class="n"><b>€ ${eur(P.deb)}</b></td></tr></tbody></table>
+    ${h('Registro acquisti')}
+    <table class="goods"><thead><tr><th>Aliquota / Natura</th><th>Imp. detraibile</th><th>IVA detraibile</th><th>Imp. indetraibile</th><th>IVA indetraibile</th></tr></thead><tbody>
+      ${R.acq.map(x=>`<tr><td>${esc(ivaLabAl(x))}</td><td class="n">€ ${eur(x.imp-x.impI)}</td><td class="n">€ ${eur(x.iva-x.ivaI)}</td><td class="n">€ ${eur(x.impI)}</td><td class="n">€ ${eur(x.ivaI)}</td></tr>`).join('')}
+      ${R.fuoriA?`<tr><td>Bollo / arrotondamenti</td><td class="n">€ ${eur(R.fuoriA)}</td><td class="n">€ 0,00</td><td class="n">€ 0,00</td><td class="n">€ 0,00</td></tr>`:''}
+      <tr><td><b>Totale</b></td><td class="n"><b>€ ${eur(sA('imp')-sA('impI')+R.fuoriA)}</b></td><td class="n"><b>€ ${eur(P.detr)}</b></td><td class="n"><b>€ ${eur(sA('impI'))}</b></td><td class="n"><b>€ ${eur(P.ind)}</b></td></tr>
+      ${P.pr!==100?`<tr><td colspan="2">Pro-rata ${prTxt}%</td><td class="n"><b>€ ${eur(P.cre)}</b></td><td colspan="2"></td></tr>`:''}</tbody></table>
+    ${h('Documenti del periodo')}
+    <table class="goods"><thead><tr><th>Data IVA</th><th>Numero</th><th>Tipo</th><th style="text-align:left">Controparte</th><th>Imponibile</th><th>IVA</th><th>IVA indetr.</th></tr></thead><tbody>
+      ${docs.map(f=>`<tr><td>${dmy(feDataIva(f))}</td><td>${esc(f.numero||'')}</td><td>${f.tipo==='attiva'?'Vend.':'Acq.'}${feIsNC(f)?' NC':''}</td><td style="text-align:left">${esc(f.controparteNome||'')}</td><td class="n">€ ${eur(feImpS(f))}</td><td class="n">€ ${eur(feIvaS(f))}</td><td class="n">${f.tipo==='passiva'&&feIvaIndetr(f)?'€ '+eur(feIvaIndetr(f)):''}</td></tr>`).join('')}
+    </tbody></table>
+    <div class="terms">Prospetto di supporto calcolato dal gestionale sulle fatture elettroniche; la liquidazione ufficiale è quella del commercialista.</div></div>`;
+  const reg={titolo:'LIQUIDAZIONE IVA',sotto,cols:[{title:'Data IVA',w:20},{title:'Numero',w:28},{title:'Tipo',w:14},{title:'Controparte',w:58},{title:'Imponibile',w:24,align:'right'},{title:'IVA',w:22,align:'right'}],
+    rows:docs.map(f=>[dmy(feDataIva(f)),f.numero||'',(f.tipo==='attiva'?'Vend.':'Acq.')+(feIsNC(f)?' NC':''),f.controparteNome||'','€ '+eur(feImpS(f)),'€ '+eur(feIvaS(f))]),
+    tot:`IVA a debito € ${eur(P.deb)} · IVA a credito € ${eur(P.cre)} · ${P.daVersare>0?'da versare € '+eur(P.daVersare):'a credito € '+eur(P.credito)}`};
+  openPreview({type:'registro',reg,title:'Liquidazione IVA '+P.lab+' '+anno,filename:'Liquidazione_IVA_'+anno+'_'+P.k.split('-')[1],email:{to:'',subject:'Liquidazione IVA '+P.lab+' '+anno,body:''}},html);
+}
+
 let reportAnno=String(new Date().getFullYear());
 let ivaPeriodo='mese';
 let reportTab='stat';
@@ -5265,37 +5550,7 @@ function renderReportStat(c){
           </div>`
         :'<div class="sub">Nessuna fattura elettronica per l&rsquo;anno selezionato.</div>'}
       </div></div>`:''}
-    ${S.fattureEl.length?(()=>{
-      const feYall=S.fattureEl.filter(f=>String(f.data||'').slice(0,4)===y);
-      const mm=f=>parseInt(String(f.data||'').slice(5,7))||0;
-      const pr=ivaProrata(y),prTxt=String(pr).replace('.',',');
-      // IVA a credito = (IVA acquisti − quota indetraibile per fornitore) × pro-rata; le note di credito riducono.
-      const rng=(da,a)=>{const inP=f=>mm(f)>=da&&mm(f)<=a;
-        const deb=round2(feYall.filter(f=>f.tipo==='attiva'&&inP(f)).reduce((s,f)=>s+feIvaS(f),0));
-        const pas=feYall.filter(f=>f.tipo==='passiva'&&inP(f));
-        const lordo=round2(pas.reduce((s,f)=>s+feIvaS(f),0));
-        const ind=round2(pas.reduce((s,f)=>s+feIvaIndetr(f),0));
-        const cre=round2((lordo-ind)*pr/100);
-        return {deb,lordo,ind,cre,s:round2(deb-cre)};};
-      const periodi = ivaPeriodo==='trim'
-        ? [['1º trimestre',1,3],['2º trimestre',4,6],['3º trimestre',7,9],['4º trimestre',10,12]]
-        : mesi.map((l,i)=>[l,i+1,i+1]);
-      const righe=periodi.map(([l,da,a])=>({l,...rng(da,a)})).filter(r=>r.deb||r.lordo);
-      const tot=righe.reduce((o,r)=>({deb:o.deb+r.deb,lordo:o.lordo+r.lordo,ind:o.ind+r.ind,cre:o.cre+r.cre}),{deb:0,lordo:0,ind:0,cre:0});
-      const saldoTd=s=>`<td class="num strong" style="color:var(--${s>0?'danger':'ok'})">${s>0.004?'€ '+eur(s)+' da versare':(s<-0.004?'€ '+eur(-s)+' a credito':'€ 0,00')}</td>`;
-      const nInd=Object.values((S.settings&&S.settings.ivaIndetr)||{}).filter(v=>num(v)>0).length;
-      return `<div class="card" style="margin-top:18px"><div class="card-head"><h2>Liquidazione IVA ${y}</h2><div style="flex:1"></div>
-        <button class="btn sm" onclick="ivaDetrDialog('${y}')">Detraibilità IVA</button>
-        <div class="seg"><button class="btn sm ${ivaPeriodo==='mese'?'primary':''}" onclick="ivaPeriodo='mese';render()">Mensile</button><button class="btn sm ${ivaPeriodo==='trim'?'primary':''}" onclick="ivaPeriodo='trim';render()">Trimestrale</button></div></div>
-        <div style="padding:16px 18px">
-          <div class="sub" style="margin-bottom:10px">Pro-rata di detraibilità ${y}: <b>${prTxt}%</b> · fornitori con IVA indetraibile impostati: <b>${nInd}</b> · <span class="golink" onclick="ivaDetrDialog('${y}')">modifica</span></div>
-          ${righe.length?`<div style="overflow-x:auto"><table><thead><tr><th>Periodo</th><th class="num">IVA a debito</th><th class="num">IVA acquisti</th><th class="num">di cui indetraibile</th><th class="num">IVA a credito${pr!==100?` (pro-rata ${prTxt}%)`:''}</th><th class="num">Saldo</th></tr></thead>
-            <tbody>${righe.map(r=>`<tr><td>${r.l}</td><td class="num">€ ${eur(r.deb)}</td><td class="num">€ ${eur(r.lordo)}</td><td class="num">${r.ind?'€ '+eur(r.ind):'—'}</td><td class="num">€ ${eur(r.cre)}</td>${saldoTd(r.s)}</tr>`).join('')}
-            <tr style="border-top:2px solid var(--line)"><td class="strong">Totale anno</td><td class="num strong">€ ${eur(tot.deb)}</td><td class="num strong">€ ${eur(tot.lordo)}</td><td class="num strong">${tot.ind?'€ '+eur(tot.ind):'—'}</td><td class="num strong">€ ${eur(tot.cre)}</td>${saldoTd(round2(tot.deb-tot.cre))}</tr></tbody></table></div>
-            <p class="sub" style="margin:10px 0 0">IVA a credito = (IVA acquisti − quota indetraibile) × pro-rata. Le note di credito riducono l&rsquo;IVA. Prospetto di supporto basato sulla <b>data documento</b>: può differire dal commercialista per fatture passive ricevute nel periodo successivo, reverse charge o split payment. Il saldo non riporta il credito dei periodi precedenti.</p>`
-          :'<div class="sub">Nessuna IVA da liquidare per l&rsquo;anno selezionato.</div>'}
-        </div></div>`;
-    })():''}`;
+    ${S.fattureEl.length?`<div class="note" style="margin-top:18px;cursor:pointer" onclick="go('liqIva')">${svg(IC.calendar)}<div><b>Liquidazione IVA</b>: prospetto per periodo, riporti, interessi, scadenze F24 e registri sono nella sezione dedicata. <span class="golink">Apri ↗</span></div></div>`:''}`;
 }
 
 /* ===================== FATTURE ===================== */

@@ -3707,18 +3707,18 @@ function renderAnalisiCosti(c){
   setActions(`<select onchange="acAnno=this.value;render()">${anniU.map(a=>`<option ${a===y?'selected':''}>${esc(a)}</option>`).join('')}</select>`);
   const anno=passive.filter(f=>String(f.data||'').slice(0,4)===y);
   const prev=passive.filter(f=>String(f.data||'').slice(0,4)===String(+y-1));
-  const tot=anno.reduce((s,f)=>s+num(f.totale),0),imp=anno.reduce((s,f)=>s+num(f.imponibile),0),iva=anno.reduce((s,f)=>s+num(f.imposta),0);
-  const totPrev=prev.reduce((s,f)=>s+num(f.totale),0);
+  const tot=anno.reduce((s,f)=>s+feTotS(f),0),imp=anno.reduce((s,f)=>s+feImpS(f),0),iva=anno.reduce((s,f)=>s+feIvaS(f),0);
+  const totPrev=prev.reduce((s,f)=>s+feTotS(f),0);
   const varPct=totPrev>0?((tot-totPrev)/totPrev*100):null;
-  const perMese=mesi.map((l,i)=>{const k=y+'-'+String(i+1).padStart(2,'0');return {l,v:round2(anno.filter(f=>String(f.data||'').slice(0,7)===k).reduce((s,f)=>s+num(f.totale),0))};});
-  const forn={};anno.forEach(f=>{const k=f.controparteNome||'—';(forn[k]=forn[k]||{tot:0,imp:0,iva:0,n:0});forn[k].tot+=num(f.totale);forn[k].imp+=num(f.imponibile);forn[k].iva+=num(f.imposta);forn[k].n++;});
+  const perMese=mesi.map((l,i)=>{const k=y+'-'+String(i+1).padStart(2,'0');return {l,v:round2(anno.filter(f=>String(f.data||'').slice(0,7)===k).reduce((s,f)=>s+feTotS(f),0))};});
+  const forn={};anno.forEach(f=>{const k=f.controparteNome||'—';(forn[k]=forn[k]||{tot:0,imp:0,iva:0,n:0});forn[k].tot+=feTotS(f);forn[k].imp+=feImpS(f);forn[k].iva+=feIvaS(f);forn[k].n++;});
   const fornArr=Object.entries(forn).map(([l,o])=>({l,...o})).sort((a,b)=>b.tot-a.tot);
   const topForn=fornArr.slice(0,8).map(o=>({l:o.l,v:o.tot}));
   c.innerHTML=`
     <div class="stat-grid" style="grid-template-columns:repeat(4,1fr)">
       <div class="stat"><div class="k">${svg(IC.card)} Costi ${y}</div><div class="v" style="color:var(--danger)">€ ${eur(tot)}</div><div class="stat-sub">${anno.length} fatture passive</div></div>
       <div class="stat"><div class="k">${svg(IC.card)} Imponibile</div><div class="v">€ ${eur(imp)}</div></div>
-      <div class="stat"><div class="k">${svg(IC.card)} IVA a credito</div><div class="v">€ ${eur(iva)}</div></div>
+      <div class="stat"><div class="k">${svg(IC.card)} IVA sugli acquisti</div><div class="v">€ ${eur(iva)}</div></div>
       <div class="stat"><div class="k">${svg(IC.user)} Fornitori</div><div class="v">${fornArr.length}</div></div>
     </div>
     ${(()=>{const ab=abbuoniTot(y);return (ab.attivi>0.005||ab.passivi>0.005||ab.nVerif)?`<div class="note" style="cursor:pointer" onclick="abbuoniDialog('${y}')"><div><b>Abbuoni / arrotondamenti ${y}:</b> perdite (passivi) € ${eur(ab.passivi)} · guadagni (attivi) € ${eur(ab.attivi)} · <b style="color:var(--${ab.netto>=0?'ok':'danger'})">netto ${ab.netto<0?'−':'+'}€ ${eur(Math.abs(ab.netto))}</b>${ab.nVerif?` · <b style="color:var(--warn)">⚠ ${ab.nVerif} da verificare</b>`:''} · <span class="golink">vedi dettaglio ↗</span> — piccole differenze non esigibili (arrotondamenti/errori) su incassi e pagamenti.</div></div>`:'';})()}
@@ -3737,7 +3737,7 @@ function renderAnalisiCosti(c){
 }
 function stampaAnalisiCosti(){
   const y=acAnno;const passive=S.fattureEl.filter(f=>f.tipo==='passiva'&&String(f.data||'').slice(0,4)===y);
-  const forn={};passive.forEach(f=>{const k=f.controparteNome||'—';(forn[k]=forn[k]||{tot:0,imp:0,iva:0,n:0});forn[k].tot+=num(f.totale);forn[k].imp+=num(f.imponibile);forn[k].iva+=num(f.imposta);forn[k].n++;});
+  const forn={};passive.forEach(f=>{const k=f.controparteNome||'—';(forn[k]=forn[k]||{tot:0,imp:0,iva:0,n:0});forn[k].tot+=feTotS(f);forn[k].imp+=feImpS(f);forn[k].iva+=feIvaS(f);forn[k].n++;});
   const arr=Object.entries(forn).map(([l,o])=>({l,...o})).sort((a,b)=>b.tot-a.tot);
   const tot=arr.reduce((s,o)=>s+o.tot,0),imp=arr.reduce((s,o)=>s+o.imp,0),iva=arr.reduce((s,o)=>s+o.iva,0),n=arr.reduce((s,o)=>s+o.n,0);
   const html=`<div class="doc">${registroHead('ANALISI COSTI — FORNITORI','Anno '+y)}
@@ -4060,6 +4060,22 @@ function bancaAnni(){const s=new Set(S.movimentiBanca.map(m=>(m.dataContabile||'
 function fePagato(f){return round2((f.alloc||[]).reduce((s,a)=>s+num(a.imp),0));}
 function feCompensato(f){return round2((f.compensa||[]).reduce((s,c)=>s+num(c.imp),0));}
 function feIsNC(f){return f.tipoDoc==='TD04';}
+/* Importi "con segno" per i totali fiscali e statistici: la nota di credito (TD04) riduce, non somma. */
+function feSgn(f){return feIsNC(f)?-1:1;}
+/* Quota del totale documento che non sta nel riepilogo IVA (bollo virtuale, arrotondamenti, altre voci):
+   nel registro IVA del commercialista finisce tra le operazioni senza IVA, quindi va contata nell'imponibile totale. */
+function feFuoriRiep(f){const d=round2(num(f.totale)-num(f.imponibile)-num(f.imposta));return Math.abs(d)>=0.01?d:0;}
+function feTotS(f){return feSgn(f)*num(f.totale);}
+function feIvaS(f){return feSgn(f)*num(f.imposta);}
+function feImpS(f){return feSgn(f)*(num(f.imponibile)+feFuoriRiep(f));}
+/* Etichette delle nature IVA (operazioni senza imposta) */
+function feNaturaLabel(n){n=String(n||'').toUpperCase();if(!n)return 'Senza IVA';
+  const m={N1:'Escluse art.15',N2:'Non soggette',N3:'Non imponibili',N4:'Esenti art.10',N5:'Regime del margine',N6:'Reverse charge',N7:'IVA assolta in altro Stato UE'};
+  const base=m[n.slice(0,2)]||'';return 'Natura '+n+(base?' · '+base:'');}
+/* Detraibilità IVA acquisti: pro-rata per anno e % indetraibile per fornitore (impostazioni salvate) */
+function ivaProrata(anno){const p=S.settings&&S.settings.ivaProrata&&S.settings.ivaProrata[String(anno)];return (p===undefined||p===null||p==='')?100:num(p);}
+function ivaFornKey(f){const p=String(f.contropartePiva||'').replace(/\D/g,'');return p?('P'+p):('N'+String(f.controparteNome||'').toUpperCase().replace(/\s+/g,' ').trim());}
+function ivaIndetrPerc(f){const m=S.settings&&S.settings.ivaIndetr;if(!m)return 0;const v=m[ivaFornKey(f)];return v?Math.min(100,Math.max(0,num(v))):0;}
 function feLabelSaldata(f){if(f.compensa&&f.compensa.length)return 'Compensata';if(feIsNC(f))return f.tipo==='attiva'?'Rimborsata al cliente':'Rimborsata';return f.tipo==='attiva'?'Incassata':'Pagata';}
 function feResiduo(f){const rit=num(f.ritenuta||0),comp=feCompensato(f);if((f.alloc&&f.alloc.length)||comp>0.005)return round2(num(f.totale)-fePagato(f)-rit-comp);return f.pagata?0:round2(num(f.totale)-rit);}
 function feNetto(f){return (f.pagamenti&&f.pagamenti.length)?round2(f.pagamenti.reduce((s,p)=>s+num(p.importo),0)):0;}
@@ -4769,6 +4785,19 @@ function feFiltra(){
 function feAnni(){const s=new Set(S.fattureEl.map(f=>String(f.data||'').slice(0,4)).filter(Boolean));s.add(String(new Date().getFullYear()));return [...s].sort().reverse();}
 /* Inserimento manuale di una fattura (es. fatture che arrivano solo in PDF, come Illumia).
    Costruisce un record compatibile con quelli importati da XML, così si riconcilia e si somma come gli altri. */
+/* Riepilogo IVA di una fattura inserita a mano (solo PDF): ricava l'aliquota (22/10/5/4) dall'IVA e mette
+   l'eventuale quota senza IVA (es. interessi o depositi nelle bollette) in una riga "Escluse art.15" (N1),
+   come fa il commercialista in registrazione. */
+function feAliquoteDa(imp,iva){
+  imp=round2(imp);iva=round2(iva);
+  if(!(Math.abs(imp)>0.004||Math.abs(iva)>0.004))return [];
+  if(Math.abs(iva)<=0.004)return [{aliquota:0,imponibile:imp,imposta:0}];
+  let best=null;
+  [22,10,5,4].forEach(a=>{const base=round2(iva*100/a),resto=round2(imp-base);if(resto>=-0.05&&(!best||resto<best.resto))best={a,base,resto};});
+  if(!best)return [{aliquota:22,imponibile:imp,imposta:iva}];
+  if(Math.abs(best.resto)<=0.05)return [{aliquota:best.a,imponibile:imp,imposta:iva}];
+  return [{aliquota:best.a,imponibile:best.base,imposta:iva},{aliquota:0,natura:'N1',norma:'Quota senza IVA (inserimento manuale)',imponibile:best.resto,imposta:0}];
+}
 function feBuildRecord(d){
   const cedD=String(d.contropartePiva||'').replace(/\D/g,'');
   const mia=feMiaPiva();
@@ -4781,7 +4810,7 @@ function feBuildRecord(d){
     fileName:d.fileName||'', tipo:attiva?'attiva':'passiva', numero:String(d.numero||''), data:d.data||'',
     tipoDoc:d.tipoDoc||'TD01', controparteNome:d.controparteNome||'', contropartePiva:cedD,
     imponibile:imp, imposta:iva, totale:tot,
-    aliquote:(imp>0||iva>0)?[{aliquota:iva>0?22:0,imponibile:imp,imposta:iva}]:[],
+    aliquote:feAliquoteDa(imp,iva),
     pagamenti:[], righe:[], pagata:false, dataPag:'', manuale:true,
     scadenza:d.scadenza||''};
 }
@@ -4831,8 +4860,8 @@ function renderFattureEl(c){
     ${S.fattureEl.length?`<button class="btn" onclick="stampaRegistroFE()">${svg(IC.print)} Registro</button>`:''}`);
   const rows=feFiltra();
   const att=rows.filter(f=>f.tipo==='attiva'),pas=rows.filter(f=>f.tipo==='passiva');
-  const sum=a=>a.reduce((s,f)=>s+num(f.totale),0);
-  const impSum=a=>a.reduce((s,f)=>s+num(f.imponibile),0), ivaSum=a=>a.reduce((s,f)=>s+num(f.imposta),0);
+  const sum=a=>a.reduce((s,f)=>s+feTotS(f),0);
+  const impSum=a=>a.reduce((s,f)=>s+feImpS(f),0), ivaSum=a=>a.reduce((s,f)=>s+feIvaS(f),0);
   const attTot=sum(att),pasTot=sum(pas),attImp=impSum(att),pasImp=impSum(pas),attIva=ivaSum(att),pasIva=ivaSum(pas);
   const kpi=(icona,titolo,a,p)=>`<div class="stat"><div class="k">${icona} ${titolo}</div>
     <div style="display:flex;flex-direction:column;gap:1px;margin-top:4px">
@@ -4840,10 +4869,23 @@ function renderFattureEl(c){
       <span class="sub" style="color:var(--danger)">Passive € ${eur(p)}</span>
       <span class="strong">Saldo € ${eur(a-p)}</span>
     </div></div>`;
-  // riepilogo IVA per aliquota
-  const perAliq={};rows.forEach(f=>(f.aliquote||[]).forEach(r=>{const k=r.aliquota+'|'+(r.natura||'');(perAliq[k]=perAliq[k]||{aliquota:r.aliquota,natura:r.natura,imp:0,iva:0});perAliq[k].imp+=num(r.imponibile);perAliq[k].iva+=num(r.imposta);}));
-  const aliq=Object.values(perAliq).sort((a,b)=>a.aliquota-b.aliquota);
-  const totImpRiep=aliq.reduce((s,a)=>s+a.imp,0),totIvaRiep=aliq.reduce((s,a)=>s+a.iva,0);
+  // riepilogo IVA per aliquota/natura, separato come nel registro del commercialista (Vendite / Acquisti).
+  // Note di credito in negativo; bollo/arrotondamenti fuori dal riepilogo XML in una riga a parte.
+  const riepilogo=arr=>{const m={};let fuori=0;
+    arr.forEach(f=>{const sg=feSgn(f);
+      (f.aliquote||[]).forEach(r=>{const al=num(r.aliquota),nat=al?'':String(r.natura||'');const k=al+'|'+nat;
+        (m[k]=m[k]||{aliquota:al,natura:nat,imp:0,iva:0});m[k].imp+=sg*num(r.imponibile);m[k].iva+=sg*num(r.imposta);});
+      fuori+=sg*feFuoriRiep(f);});
+    const righe=Object.values(m).filter(x=>Math.abs(x.imp)>0.004||Math.abs(x.iva)>0.004)
+      .sort((a,b)=>((a.aliquota?0:1)-(b.aliquota?0:1))||(a.aliquota-b.aliquota)||a.natura.localeCompare(b.natura));
+    fuori=round2(fuori);
+    return {righe,fuori,imp:righe.reduce((s,x)=>s+x.imp,0)+fuori,iva:righe.reduce((s,x)=>s+x.iva,0)};};
+  const riepV=riepilogo(att),riepA=riepilogo(pas),haV=att.length>0,haA=pas.length>0;
+  const riepTab=(tit,R)=>`<div><div class="sub strong" style="margin-bottom:6px">${tit}</div>
+    <table><thead><tr><th>Aliquota / Natura</th><th class="num">Imponibile</th><th class="num">IVA</th></tr></thead>
+    <tbody>${R.righe.map(a=>`<tr><td>${a.aliquota?a.aliquota+'%':esc(feNaturaLabel(a.natura))}</td><td class="num">€ ${eur(a.imp)}</td><td class="num">€ ${eur(a.iva)}</td></tr>`).join('')}
+    ${R.fuori?`<tr><td>Bollo / arrotondamenti <span class="sub">(fuori riepilogo XML)</span></td><td class="num">€ ${eur(R.fuori)}</td><td class="num">€ 0,00</td></tr>`:''}</tbody>
+    <tfoot><tr style="border-top:2px solid var(--line);font-weight:700"><td>Totale</td><td class="num">€ ${eur(R.imp)}</td><td class="num">€ ${eur(R.iva)}</td></tr></tfoot></table></div>`;
   const anni=feAnni();const opt=(v,cur)=>`<option ${cur===v?'selected':''}>${esc(v)}</option>`;
   c.innerHTML=`
     <div class="stat-grid" style="grid-template-columns:repeat(3,1fr)">
@@ -4860,10 +4902,8 @@ function renderFattureEl(c){
       <label class="sub" style="display:flex;align-items:center;gap:6px">al <input type="date" value="${filtriFE.al}" onchange="filtriFE.al=this.value;render()"></label>
       ${(filtriFE.anno||filtriFE.tipo||filtriFE.pagata||filtriFE.dal||filtriFE.al)?`<button class="btn sm" onclick="filtriFE={anno:'',tipo:'',pagata:'',dal:'',al:''};render()">Azzera filtri</button>`:''}
     </div>
-    ${aliq.length?`<div class="card" style="margin-bottom:14px"><div class="card-head"><h2>Riepilogo IVA</h2></div>
-      <div style="padding:12px 18px"><table><thead><tr><th>Aliquota / Natura</th><th class="num">Imponibile</th><th class="num">IVA</th></tr></thead>
-      <tbody>${aliq.map(a=>`<tr><td>${a.aliquota?a.aliquota+'%':(a.natura?'Natura '+esc(a.natura):'—')}</td><td class="num">€ ${eur(a.imp)}</td><td class="num">€ ${eur(a.iva)}</td></tr>`).join('')}</tbody>
-      <tfoot><tr style="border-top:2px solid var(--line);font-weight:700"><td>Totale</td><td class="num">€ ${eur(totImpRiep)}</td><td class="num">€ ${eur(totIvaRiep)}</td></tr></tfoot></table></div></div>`:''}
+    ${(haV||haA)?`<div class="card" style="margin-bottom:14px"><div class="card-head"><h2>Riepilogo IVA</h2><div style="flex:1"></div><span class="sub">come il registro IVA · note di credito in negativo</span></div>
+      <div class="${haV&&haA?'two-col':''}" style="padding:12px 18px">${haV?riepTab('Vendite (fatture attive)',riepV):''}${haA?riepTab('Acquisti (fatture passive)',riepA):''}</div></div>`:''}
     ${feSel.size?`<div class="toolbar" style="background:var(--accent-soft);border-radius:10px;padding:8px 12px;margin-bottom:10px">
       <span class="strong">${feSel.size} selezionate</span><div style="flex:1"></div>
       <button class="btn sm" onclick="feStampaSelezionate()">${svg(IC.print,1.9)} Stampa</button>
@@ -4973,13 +5013,13 @@ function feDelete(id){confirmDialog('Rimuovere questa fattura importata?','Elimi
 function stampaRegistroFE(rowsArg){
   const rows=(rowsArg||feFiltra()).slice().sort((a,b)=>(a.data||'').localeCompare(b.data||''));
   const sotto=[filtriFE.anno&&('Anno '+filtriFE.anno),filtriFE.tipo&&(filtriFE.tipo==='attiva'?'Attive':'Passive')].filter(Boolean).join(' · ')||'Attive e passive';
-  const tImp=rows.reduce((s,f)=>s+num(f.imponibile),0),tIva=rows.reduce((s,f)=>s+num(f.imposta),0),tTot=rows.reduce((s,f)=>s+num(f.totale),0);
+  const tImp=rows.reduce((s,f)=>s+feImpS(f),0),tIva=rows.reduce((s,f)=>s+feIvaS(f),0),tTot=rows.reduce((s,f)=>s+feTotS(f),0);
   const html=`<div class="doc">${registroHead('FATTURE ELETTRONICHE',sotto)}
     <table class="goods"><thead><tr><th>Data</th><th>Numero</th><th>Tipo</th><th style="text-align:left">Controparte</th><th>Imponibile</th><th>IVA</th><th>Totale</th></tr></thead>
-    <tbody>${rows.length?rows.map(f=>`<tr><td>${f.data?dmy(f.data):''}</td><td>${esc(f.numero||'')}</td><td>${f.tipo==='attiva'?'Att.':'Pass.'}</td><td style="text-align:left">${esc(f.controparteNome||'')}</td><td class="n">€ ${eur(f.imponibile)}</td><td class="n">€ ${eur(f.imposta)}</td><td class="n">€ ${eur(f.totale)}</td></tr>`).join(''):'<tr><td colspan="7">Nessuna fattura.</td></tr>'}
+    <tbody>${rows.length?rows.map(f=>`<tr><td>${f.data?dmy(f.data):''}</td><td>${esc(f.numero||'')}</td><td>${f.tipo==='attiva'?'Att.':'Pass.'}${feIsNC(f)?' NC':''}</td><td style="text-align:left">${esc(f.controparteNome||'')}</td><td class="n">€ ${eur(feImpS(f))}</td><td class="n">€ ${eur(feIvaS(f))}</td><td class="n">€ ${eur(feTotS(f))}</td></tr>`).join(''):'<tr><td colspan="7">Nessuna fattura.</td></tr>'}
     <tr><td colspan="4" style="text-align:right"><b>Totali</b></td><td class="n"><b>€ ${eur(tImp)}</b></td><td class="n"><b>€ ${eur(tIva)}</b></td><td class="n"><b>€ ${eur(tTot)}</b></td></tr></tbody></table></div>`;
   const reg={titolo:'FATTURE ELETTRONICHE',sotto,cols:[{title:'Data',w:20},{title:'Numero',w:24},{title:'Tipo',w:14},{title:'Controparte',w:60},{title:'Imponibile',w:24,align:'right'},{title:'IVA',w:20,align:'right'},{title:'Totale',w:24,align:'right'}],
-    rows:rows.map(f=>[f.data?dmy(f.data):'',f.numero||'',f.tipo==='attiva'?'Att.':'Pass.',f.controparteNome||'','€ '+eur(f.imponibile),'€ '+eur(f.imposta),'€ '+eur(f.totale)]),
+    rows:rows.map(f=>[f.data?dmy(f.data):'',f.numero||'',(f.tipo==='attiva'?'Att.':'Pass.')+(feIsNC(f)?' NC':''),f.controparteNome||'','€ '+eur(feImpS(f)),'€ '+eur(feIvaS(f)),'€ '+eur(feTotS(f))]),
     tot:`Imponibile € ${eur(tImp)} · IVA € ${eur(tIva)} · Totale € ${eur(tTot)}`};
   openPreview({type:'registro',reg,title:'Fatture elettroniche',filename:'Fatture_elettroniche',email:{to:'',subject:'',body:''}},html);
 }
@@ -5110,6 +5150,36 @@ function stampaRegistroPrimaNota(){
 }
 
 /* ===================== REPORT E STATISTICHE ===================== */
+/* Impostazioni di detraibilità IVA acquisti: pro-rata dell'anno + % di IVA indetraibile per fornitore */
+function ivaDetrDialog(y){
+  y=String(y);
+  const cfg=(S.settings&&S.settings.ivaIndetr)||{};
+  const m={};
+  S.fattureEl.filter(f=>f.tipo==='passiva'&&String(f.data||'').slice(0,4)===y).forEach(f=>{const k=ivaFornKey(f);
+    (m[k]=m[k]||{k,nome:f.controparteNome||'—',iva:0,n:0});m[k].iva+=feIvaS(f);m[k].n++;});
+  Object.keys(cfg).forEach(k=>{if(!m[k]&&num(cfg[k])>0){const f=S.fattureEl.find(x=>ivaFornKey(x)===k);m[k]={k,nome:f?(f.controparteNome||k.slice(1)):k.slice(1),iva:0,n:0};}});
+  const arr=Object.values(m).filter(o=>Math.abs(o.iva)>0.004||num(cfg[o.k])>0)
+    .sort((a,b)=>((num(cfg[b.k])>0)-(num(cfg[a.k])>0))||(b.iva-a.iva));
+  const body=`<div class="note">${svg(IC.card)}<div><b>Pro-rata:</b> percentuale di IVA detraibile dell&rsquo;anno (la indica il commercialista nella liquidazione, es. 67%).<br>
+      <b>IVA indetraibile per fornitore:</b> quota di IVA che il commercialista non detrae per quel tipo di costo (es. ristoranti 100%, telefonia 50%, pedaggi/auto 60%). Vale per tutte le fatture di quel fornitore.</div></div>
+    <div class="field" style="max-width:260px"><label>Pro-rata di detraibilità ${y} (%)</label><input id="iva-pr" type="number" min="0" max="100" step="1" value="${ivaProrata(y)}"></div>
+    <div class="section-label">IVA indetraibile per fornitore</div>
+    <div style="max-height:46vh;overflow:auto"><table><thead><tr><th>Fornitore</th><th class="num">IVA ${y}</th><th class="num">% indetraibile</th></tr></thead><tbody>
+    ${arr.length?arr.map(o=>`<tr><td>${esc(o.nome)} <span class="sub">(${o.n} fatt.)</span></td><td class="num">€ ${eur(o.iva)}</td><td class="num"><input class="iva-ind" data-k="${esc(o.k)}" type="number" min="0" max="100" step="1" value="${num(cfg[o.k])>0?num(cfg[o.k]):''}" placeholder="0" style="width:80px;text-align:right"></td></tr>`).join(''):'<tr><td colspan="3" class="sub">Nessuna fattura passiva nell&rsquo;anno.</td></tr>'}
+    </tbody></table></div>`;
+  openModal('Detraibilità IVA acquisti '+y,body,()=>{
+    S.settings=S.settings||{};
+    const prV=document.getElementById('iva-pr').value;
+    const prObj=Object.assign({},S.settings.ivaProrata||{});
+    if(prV===''||num(prV)>=100)delete prObj[y];else prObj[y]=Math.max(0,num(prV));
+    S.settings.ivaProrata=prObj;
+    const ind=Object.assign({},cfg);
+    document.querySelectorAll('.iva-ind').forEach(inp=>{const k=inp.getAttribute('data-k');const v=num(inp.value);if(v>0)ind[k]=Math.min(100,v);else delete ind[k];});
+    S.settings.ivaIndetr=ind;
+    logAction('Detraibilità IVA aggiornata','Pro-rata '+y+': '+ivaProrata(y)+'% · fornitori indetraibili: '+Object.keys(ind).length);
+    persist();render();toast('Detraibilità IVA aggiornata');return true;
+  },{wide:true});
+}
 let reportAnno=String(new Date().getFullYear());
 let ivaPeriodo='mese';
 let reportTab='stat';
@@ -5146,10 +5216,10 @@ function renderReportStat(c){
   const feY=S.fattureEl.filter(f=>String(f.data||'').slice(0,4)===y);
   const feAtt=feY.filter(f=>f.tipo==='attiva'),fePas=feY.filter(f=>f.tipo==='passiva');
   const feMeseData=mesi.map((l,i)=>{const k=y+'-'+String(i+1).padStart(2,'0');const ms=feY.filter(f=>String(f.data||'').slice(0,7)===k);
-    return {l,a:round2(ms.filter(f=>f.tipo==='attiva').reduce((s,f)=>s+num(f.totale),0)),p:round2(ms.filter(f=>f.tipo==='passiva').reduce((s,f)=>s+num(f.totale),0))};});
-  const feAgg=(arr)=>{const m={};arr.forEach(f=>{const k=f.controparteNome||'—';m[k]=(m[k]||0)+num(f.totale);});return Object.entries(m).map(([l,v])=>({l,v})).sort((a,b)=>b.v-a.v).slice(0,6);};
+    return {l,a:round2(ms.filter(f=>f.tipo==='attiva').reduce((s,f)=>s+feTotS(f),0)),p:round2(ms.filter(f=>f.tipo==='passiva').reduce((s,f)=>s+feTotS(f),0))};});
+  const feAgg=(arr)=>{const m={};arr.forEach(f=>{const k=f.controparteNome||'—';m[k]=(m[k]||0)+feTotS(f);});return Object.entries(m).map(([l,v])=>({l,v})).sort((a,b)=>b.v-a.v).slice(0,6);};
   const feCliTop=feAgg(feAtt),feForTop=feAgg(fePas);
-  const feAttTot=feAtt.reduce((s,f)=>s+num(f.totale),0),fePasTot=fePas.reduce((s,f)=>s+num(f.totale),0);
+  const feAttTot=feAtt.reduce((s,f)=>s+feTotS(f),0),fePasTot=fePas.reduce((s,f)=>s+feTotS(f),0);
   setActions(`<select onchange="reportAnno=this.value;render()">${anni.map(a=>`<option ${a===y?'selected':''}>${a}</option>`).join('')}</select>`);
   c.innerHTML=`
     <div class="stat-grid six">
@@ -5190,20 +5260,31 @@ function renderReportStat(c){
     ${S.fattureEl.length?(()=>{
       const feYall=S.fattureEl.filter(f=>String(f.data||'').slice(0,4)===y);
       const mm=f=>parseInt(String(f.data||'').slice(5,7))||0;
-      const rng=(da,a)=>{const deb=feYall.filter(f=>f.tipo==='attiva'&&mm(f)>=da&&mm(f)<=a).reduce((s,f)=>s+num(f.imposta),0);
-        const cre=feYall.filter(f=>f.tipo==='passiva'&&mm(f)>=da&&mm(f)<=a).reduce((s,f)=>s+num(f.imposta),0);return {deb,cre,s:deb-cre};};
+      const pr=ivaProrata(y),prTxt=String(pr).replace('.',',');
+      // IVA a credito = (IVA acquisti − quota indetraibile per fornitore) × pro-rata; le note di credito riducono.
+      const rng=(da,a)=>{const inP=f=>mm(f)>=da&&mm(f)<=a;
+        const deb=round2(feYall.filter(f=>f.tipo==='attiva'&&inP(f)).reduce((s,f)=>s+feIvaS(f),0));
+        const pas=feYall.filter(f=>f.tipo==='passiva'&&inP(f));
+        const lordo=round2(pas.reduce((s,f)=>s+feIvaS(f),0));
+        const ind=round2(pas.reduce((s,f)=>s+feIvaS(f)*ivaIndetrPerc(f)/100,0));
+        const cre=round2((lordo-ind)*pr/100);
+        return {deb,lordo,ind,cre,s:round2(deb-cre)};};
       const periodi = ivaPeriodo==='trim'
         ? [['1º trimestre',1,3],['2º trimestre',4,6],['3º trimestre',7,9],['4º trimestre',10,12]]
         : mesi.map((l,i)=>[l,i+1,i+1]);
-      const righe=periodi.map(([l,da,a])=>({l,...rng(da,a)})).filter(r=>r.deb||r.cre);
-      const tot=righe.reduce((o,r)=>({deb:o.deb+r.deb,cre:o.cre+r.cre}),{deb:0,cre:0});
+      const righe=periodi.map(([l,da,a])=>({l,...rng(da,a)})).filter(r=>r.deb||r.lordo);
+      const tot=righe.reduce((o,r)=>({deb:o.deb+r.deb,lordo:o.lordo+r.lordo,ind:o.ind+r.ind,cre:o.cre+r.cre}),{deb:0,lordo:0,ind:0,cre:0});
+      const saldoTd=s=>`<td class="num strong" style="color:var(--${s>0?'danger':'ok'})">${s>0.004?'€ '+eur(s)+' da versare':(s<-0.004?'€ '+eur(-s)+' a credito':'€ 0,00')}</td>`;
+      const nInd=Object.values((S.settings&&S.settings.ivaIndetr)||{}).filter(v=>num(v)>0).length;
       return `<div class="card" style="margin-top:18px"><div class="card-head"><h2>Liquidazione IVA ${y}</h2><div style="flex:1"></div>
+        <button class="btn sm" onclick="ivaDetrDialog('${y}')">Detraibilità IVA</button>
         <div class="seg"><button class="btn sm ${ivaPeriodo==='mese'?'primary':''}" onclick="ivaPeriodo='mese';render()">Mensile</button><button class="btn sm ${ivaPeriodo==='trim'?'primary':''}" onclick="ivaPeriodo='trim';render()">Trimestrale</button></div></div>
         <div style="padding:16px 18px">
-          ${righe.length?`<table><thead><tr><th>Periodo</th><th class="num">IVA a debito (attive)</th><th class="num">IVA a credito (passive)</th><th class="num">Saldo</th></tr></thead>
-            <tbody>${righe.map(r=>`<tr><td>${r.l}</td><td class="num">€ ${eur(r.deb)}</td><td class="num">€ ${eur(r.cre)}</td><td class="num strong" style="color:var(--${r.s>0?'danger':'ok'})">${r.s>0?'€ '+eur(r.s)+' da versare':(r.s<0?'€ '+eur(-r.s)+' a credito':'€ 0,00')}</td></tr>`).join('')}
-            <tr style="border-top:2px solid var(--line)"><td class="strong">Totale anno</td><td class="num strong">€ ${eur(tot.deb)}</td><td class="num strong">€ ${eur(tot.cre)}</td><td class="num strong" style="color:var(--${(tot.deb-tot.cre)>0?'danger':'ok'})">${(tot.deb-tot.cre)>0?'€ '+eur(tot.deb-tot.cre)+' da versare':'€ '+eur(tot.cre-tot.deb)+' a credito'}</td></tr></tbody></table>
-            <p class="sub" style="margin:10px 0 0">Prospetto gestionale di supporto basato sulle fatture importate. Non sostituisce la liquidazione del commercialista (casi come reverse charge, split payment o pro-rata richiedono verifiche specifiche).</p>`
+          <div class="sub" style="margin-bottom:10px">Pro-rata di detraibilità ${y}: <b>${prTxt}%</b> · fornitori con IVA indetraibile impostati: <b>${nInd}</b> · <span class="golink" onclick="ivaDetrDialog('${y}')">modifica</span></div>
+          ${righe.length?`<div style="overflow-x:auto"><table><thead><tr><th>Periodo</th><th class="num">IVA a debito</th><th class="num">IVA acquisti</th><th class="num">di cui indetraibile</th><th class="num">IVA a credito${pr!==100?` (pro-rata ${prTxt}%)`:''}</th><th class="num">Saldo</th></tr></thead>
+            <tbody>${righe.map(r=>`<tr><td>${r.l}</td><td class="num">€ ${eur(r.deb)}</td><td class="num">€ ${eur(r.lordo)}</td><td class="num">${r.ind?'€ '+eur(r.ind):'—'}</td><td class="num">€ ${eur(r.cre)}</td>${saldoTd(r.s)}</tr>`).join('')}
+            <tr style="border-top:2px solid var(--line)"><td class="strong">Totale anno</td><td class="num strong">€ ${eur(tot.deb)}</td><td class="num strong">€ ${eur(tot.lordo)}</td><td class="num strong">${tot.ind?'€ '+eur(tot.ind):'—'}</td><td class="num strong">€ ${eur(tot.cre)}</td>${saldoTd(round2(tot.deb-tot.cre))}</tr></tbody></table></div>
+            <p class="sub" style="margin:10px 0 0">IVA a credito = (IVA acquisti − quota indetraibile) × pro-rata. Le note di credito riducono l&rsquo;IVA. Prospetto di supporto basato sulla <b>data documento</b>: può differire dal commercialista per fatture passive ricevute nel periodo successivo, reverse charge o split payment. Il saldo non riporta il credito dei periodi precedenti.</p>`
           :'<div class="sub">Nessuna IVA da liquidare per l&rsquo;anno selezionato.</div>'}
         </div></div>`;
     })():''}`;

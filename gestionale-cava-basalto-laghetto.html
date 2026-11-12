@@ -4080,7 +4080,10 @@ function feNaturaLabel(n){n=String(n||'').toUpperCase();if(!n)return 'Senza IVA'
 /* Detraibilità IVA acquisti: pro-rata per anno e % indetraibile per fornitore (impostazioni salvate) */
 function ivaProrata(anno){const p=S.settings&&S.settings.ivaProrata&&S.settings.ivaProrata[String(anno)];return (p===undefined||p===null||p==='')?100:num(p);}
 function ivaFornKey(f){const p=String(f.contropartePiva||'').replace(/\D/g,'');return p?('P'+p):('N'+String(f.controparteNome||'').toUpperCase().replace(/\s+/g,' ').trim());}
-function ivaIndetrPerc(f){const m=S.settings&&S.settings.ivaIndetr;if(!m)return 0;const v=m[ivaFornKey(f)];return v?Math.min(100,Math.max(0,num(v))):0;}
+function ivaIndetrFornPerc(f){const m=S.settings&&S.settings.ivaIndetr;if(!m)return 0;const v=m[ivaFornKey(f)];return v?Math.min(100,Math.max(0,num(v))):0;}
+function ivaHaOverride(f){return !!f&&f.indetrPerc!==undefined&&f.indetrPerc!==null&&f.indetrPerc!=='';}
+/* % indetraibile: quella impostata sulla singola fattura prevale sulla regola del fornitore */
+function ivaIndetrPerc(f){return ivaHaOverride(f)?Math.min(100,Math.max(0,num(f.indetrPerc))):ivaIndetrFornPerc(f);}
 /* IVA indetraibile di una fattura: arrotondata riga per riga del riepilogo, come nel registro del commercialista */
 function feIvaIndetr(f){const p=ivaIndetrPerc(f);if(!p)return 0;const sg=feSgn(f);
   const rows=(f.aliquote||[]).filter(r=>Math.abs(num(r.imposta))>0.004);
@@ -5210,6 +5213,13 @@ const IVA_MESI=['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio'
 function ivaPeriodicita(){return (S.settings&&S.settings.ivaPeriodicita)==='mese'?'mese':'trim';}
 function feDataIva(f){return f.dataIva||f.data||'';}
 function ivaVers(){return (S.settings&&S.settings.ivaVersamenti)||{};}
+/* Dati della comunicazione LIPE inviata all'Agenzia (dal cassetto fiscale): prevalgono per i riporti al periodo successivo */
+function ivaLipe(){return (S.settings&&S.settings.ivaLipe)||{};}
+function ivaLipeDiff(P){const l=P.lipe;if(!l)return null;const d=[];
+  if(Math.abs(round2(P.deb-num(l.vp4)))>0.009)d.push('IVA esigibile');
+  if(Math.abs(round2(P.cre-num(l.vp5)))>0.009)d.push('IVA detratta');
+  if(Math.abs(round2(P.daVersare-num(l.daVersare)))>0.009||Math.abs(round2(P.credito-num(l.credito)))>0.009)d.push('risultato');
+  return d;}
 function ivaShift(s,n){const d=new Date(s+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);}
 /* scadenza che cade di sabato o domenica: slitta al lunedì */
 function ivaFeriale(y,m,d){const dt=new Date(Date.UTC(y,m-1,d));const wd=dt.getUTCDay();if(wd===6)dt.setUTCDate(dt.getUTCDate()+2);else if(wd===0)dt.setUTCDate(dt.getUTCDate()+1);return dt.toISOString().slice(0,10);}
@@ -5246,7 +5256,9 @@ function ivaLiqCalc(anno){
       if(ris<=25.82&&!p.ultimo){sotto=true;debR=ris;cred=0;}
       else{interessi=trim?round2(ris*0.01):0;daVersare=round2(ris+interessi);debR=0;cred=0;}
     }else{cred=round2(-ris);debR=0;}
-    return {...p,anno,att,pas,deb,lordo,ind,detr,pr,cre,credPrec,debPrec,acconto,ris,interessi,daVersare,sotto,
+    const lipe=ivaLipe()[p.k]||null;
+    if(lipe){cred=round2(num(lipe.credito));debR=0;}
+    return {...p,anno,att,pas,deb,lordo,ind,detr,pr,cre,credPrec,debPrec,acconto,ris,interessi,daVersare,sotto,lipe,
       credito:ris<-0.004?round2(-ris):0,versato:ivaVers()[p.k]||null,haDati:(att.length+pas.length)>0};
   });
 }
@@ -5329,13 +5341,19 @@ function renderLiqIva(c){
       ${P.daVersare>0?riga('Scadenza F24',`${dmy(P.scad)} · cod. tributo ${P.codice} · anno ${P.anno}`):''}
     </tbody></table>
     <div class="toolbar" style="margin-top:12px;gap:8px;flex-wrap:wrap">${ivaStatoPill(P)}<div style="flex:1"></div>
+      <button class="btn sm" onclick="ivaLipeDialog('${P.anno}','${P.k}')">${P.lipe?'Dati LIPE':'Inserisci LIPE'}</button>
       ${P.daVersare>0||P.versato?`<button class="btn sm ${P.versato?'':'primary'}" onclick="ivaVersatoDialog('${P.anno}','${P.k}')">${P.versato?'Modifica versamento':'Segna versato'}</button>`:''}</div>
+    ${P.lipe?(()=>{const l=P.lipe,dd=ivaLipeDiff(P),cmp=(a,b)=>Math.abs(round2(a-b))<=0.009?' ✓':` <span style="color:var(--warn)">(gestionale € ${eur(a)} · diff. € ${eur(round2(a-b))})</span>`;
+      return `<div class="note" style="margin-top:10px">${svg(IC.check)}<div><b>Comunicazione LIPE inviata${l.n?' n. '+esc(l.n):''}${l.data?' del '+dmy(l.data):''}</b><br>
+        IVA esigibile € ${eur(l.vp4)}${cmp(P.deb,num(l.vp4))} · IVA detratta € ${eur(l.vp5)}${cmp(P.cre,num(l.vp5))}${num(l.vp8)?' · credito periodo prec. € '+eur(l.vp8):''}${num(l.vp12)?' · interessi € '+eur(l.vp12):''}<br>
+        Risultato dichiarato: <b>${num(l.daVersare)?'da versare € '+eur(l.daVersare):'a credito € '+eur(l.credito)}</b>${num(l.daVersare)?cmp(P.daVersare,num(l.daVersare)):cmp(P.credito,num(l.credito))}
+        ${dd.length?'<br><span class="sub">Il riporto al periodo successivo usa i dati della LIPE.</span>':''}</div></div>`;})():''}
     ${P.annuale&&P.daVersare>0?'<div class="sub" style="margin-top:8px">Trimestrali per opzione: il 4º trimestre si versa con il saldo della dichiarazione IVA annuale. Importo indicativo, al netto dell’acconto registrato.</div>':''}`;
   const cal=`<div style="overflow-x:auto"><table><thead><tr><th>Periodo</th><th class="num">Debito</th><th class="num">Credito</th><th class="num">Risultato</th><th class="num">Da versare</th><th>Scadenza</th><th>Stato</th></tr></thead><tbody>
     ${L.map(p=>`<tr style="cursor:pointer;${p.k===P.k?'background:var(--accent-soft)':''}" onclick="liqSel='${p.k}';render()">
       <td class="strong">${trim?p.breve:p.lab}</td><td class="num">${p.haDati?'€ '+eur(p.deb):'—'}</td><td class="num">${p.haDati?'€ '+eur(p.cre):'—'}</td>
       <td class="num" style="color:var(--${p.ris>0?'danger':'ok'})">${p.haDati||p.credPrec?eurS(p.ris):'—'}</td>
-      <td class="num strong">${p.daVersare>0?'€ '+eur(p.daVersare):'—'}</td><td class="sub">${dmy(p.scad)}</td><td>${ivaStatoPill(p)}</td></tr>`).join('')}
+      <td class="num strong">${p.daVersare>0?'€ '+eur(p.daVersare):'—'}</td><td class="sub">${dmy(p.scad)}</td><td>${ivaStatoPill(p)}${p.lipe?(ivaLipeDiff(p).length?' <span class="pill warn" title="Il calcolo del gestionale differisce dalla LIPE inviata">LIPE ≠</span>':' <span class="pill ok" title="Coincide con la LIPE inviata">LIPE ✓</span>'):''}</td></tr>`).join('')}
     </tbody></table></div>`;
   const tabV=`<table><thead><tr><th>Aliquota / Natura</th><th class="num">Imponibile</th><th class="num">Imposta</th></tr></thead><tbody>
     ${R.vend.map(x=>`<tr><td>${esc(ivaLabAl(x))}</td><td class="num">€ ${eur(x.imp)}</td><td class="num">€ ${eur(x.iva)}</td></tr>`).join('')||'<tr><td colspan="3" class="sub">Nessuna fattura di vendita nel periodo.</td></tr>'}
@@ -5353,8 +5371,8 @@ function renderLiqIva(c){
       return `<tr><td>${dmy(feDataIva(f))}${f.dataIva?`<div class="sub">doc. ${dmy(f.data)}</div>`:''}</td>
         <td>${esc(f.numero||'—')}<div class="sub">${f.tipo==='attiva'?'Vendita':'Acquisto'}${feIsNC(f)?' · nota di credito':''}</div></td>
         <td>${esc(f.controparteNome||'—')}</td><td class="num">€ ${eur(feImpS(f))}</td><td class="num">€ ${eur(feIvaS(f))}</td>
-        <td class="num">${pi?pi+'% · € '+eur(ii):'—'}</td><td class="num strong">€ ${eur(round2(feIvaS(f)-ii))}</td>
-        <td class="actions"><button class="btn sm" title="Cambia il periodo IVA di competenza" onclick="ivaDataDialog('${f.id}')">Data IVA</button></td></tr>`;}).join('')||'<tr><td colspan="8" class="sub">Nessun documento nel periodo.</td></tr>'}
+        <td class="num">${pi?pi+'% · € '+eur(ii):'—'}${ivaHaOverride(f)?'<div class="sub">sulla fattura</div>':''}</td><td class="num strong">€ ${eur(round2(feIvaS(f)-ii))}</td>
+        <td class="actions"><button class="btn sm" title="Cambia il periodo IVA di competenza" onclick="ivaDataDialog('${f.id}')">Modifica</button></td></tr>`;}).join('')||'<tr><td colspan="8" class="sub">Nessun documento nel periodo.</td></tr>'}
     </tbody></table></div>`;
   const ac=ivaAccontoStima(liqAnno),accV=ivaVers()[liqAnno+'-ACC'];
   const accBox=`<div class="card" style="margin-top:14px"><div class="card-head"><h2>Acconto IVA ${liqAnno}</h2><div style="flex:1"></div><span class="sub">scadenza ${dmy(ac.scad)} · F24 cod. 6035</span></div>
@@ -5413,16 +5431,36 @@ function ivaVersatoDialog(anno,k){
     logAction(d?'Versamento IVA registrato':'Versamento IVA rimosso',(isAcc?'Acconto '+anno:P.lab+' '+anno)+(d?' · '+dmy(d)+' · € '+eur(num(imp)):''));
     persist();render();toast(d?'Versamento registrato':'Registrazione rimossa');return true;});
 }
+function ivaLipeDialog(anno,k){
+  const P=ivaLiqCalc(anno).find(p=>p.k===k);if(!P)return;const l=ivaLipe()[k]||{};
+  const fld=(id,lab,v,typ='number')=>`<div class="field"><label>${lab}</label><input id="${id}" type="${typ}" ${typ==='number'?'step="0.01"':''} value="${v!==undefined&&v!==null&&v!==''?esc(String(v)):''}"></div>`;
+  const body=`<div class="note">${svg(IC.calendar)}<div>Riporta i dati della <b>comunicazione LIPE</b> inviata all&rsquo;Agenzia per ${esc(P.lab)} ${anno} (cassetto fiscale → Dichiarazioni fiscali → Comunicazioni liquidazioni periodiche IVA). Il gestionale li confronta col suo calcolo e li usa per il riporto al periodo successivo. Lascia tutto vuoto per eliminarli.</div></div>
+    <div class="form-grid" style="grid-template-columns:1fr 1fr">${fld('lp-n','Numero comunicazione',l.n,'text')}${fld('lp-data','Data invio',l.data,'date')}
+      ${fld('lp-vp4','VP4 IVA esigibile (€)',l.vp4)}${fld('lp-vp5','VP5 IVA detratta (€)',l.vp5)}
+      ${fld('lp-vp8','VP8 credito periodo precedente (€)',l.vp8)}${fld('lp-vp12','VP12 interessi trimestrali (€)',l.vp12)}
+      ${fld('lp-dv','VP14 IVA da versare (€)',l.daVersare)}${fld('lp-cr','VP14 IVA a credito (€)',l.credito)}</div>`;
+  openModal('Dati LIPE · '+P.lab+' '+anno,body,()=>{
+    const g=id=>document.getElementById(id).value;const o={n:g('lp-n').trim(),data:g('lp-data'),vp4:round2(num(g('lp-vp4'))),vp5:round2(num(g('lp-vp5'))),vp8:round2(num(g('lp-vp8'))),vp12:round2(num(g('lp-vp12'))),daVersare:round2(num(g('lp-dv'))),credito:round2(num(g('lp-cr')))};
+    S.settings=S.settings||{};const all=Object.assign({},S.settings.ivaLipe||{});
+    if(!o.n&&!o.data&&!o.vp4&&!o.vp5&&!o.daVersare&&!o.credito)delete all[k];else all[k]=o;
+    S.settings.ivaLipe=all;logAction('Dati LIPE '+(all[k]?'registrati':'rimossi'),P.lab+' '+anno);
+    persist();render();toast('Dati LIPE salvati');return true;},{wide:true});
+}
 function ivaDataDialog(id){
   const f=S.fattureEl.find(x=>x.id===id);if(!f)return;
   const body=`<div class="note">${svg(IC.calendar)}<div>La <b>data IVA</b> decide in quale liquidazione entra la fattura. Di norma è la data del documento.
       Una fattura d’acquisto ricevuta <b>dopo il 15 del mese successivo</b> si detrae nel periodo di ricezione (art. 1 DPR 100/1998): imposta qui la data di ricezione.</div></div>
     <div class="sub" style="margin-bottom:8px">${f.tipo==='attiva'?'Vendita':'Acquisto'} n. <b>${esc(f.numero||'')}</b> · ${esc(f.controparteNome||'')} · data documento <b>${dmy(f.data)}</b></div>
-    <div class="field" style="max-width:240px"><label>Data IVA (competenza)</label><input id="fi-data" type="date" value="${esc(feDataIva(f))}"></div>`;
-  openModal('Data IVA della fattura',body,()=>{
+    <div class="form-grid" style="grid-template-columns:1fr 1fr">
+      <div class="field"><label>Data IVA (competenza)</label><input id="fi-data" type="date" value="${esc(feDataIva(f))}"></div>
+      ${f.tipo==='passiva'?`<div class="field"><label>IVA indetraibile di questa fattura (%)</label><input id="fi-ind" type="number" min="0" max="100" step="1" value="${ivaHaOverride(f)?num(f.indetrPerc):''}" placeholder="regola fornitore: ${ivaIndetrFornPerc(f)}%"></div>`:''}
+    </div>
+    ${f.tipo==='passiva'?'<div class="sub">Lascia vuota la percentuale per usare la regola del fornitore. Impostala solo per eccezioni (es. una fattura trattata diversamente dal commercialista).</div>':''}`;
+  openModal('IVA della fattura',body,()=>{
     const v=document.getElementById('fi-data').value;
     if(!v||v===f.data)delete f.dataIva;else f.dataIva=v;
-    logAction('Data IVA fattura',(f.numero||'')+' · '+(f.controparteNome||'')+' → '+dmy(feDataIva(f)));
+    const ie=document.getElementById('fi-ind');if(ie){if(ie.value==='')delete f.indetrPerc;else f.indetrPerc=Math.min(100,Math.max(0,num(ie.value)));}
+    logAction('IVA fattura modificata',(f.numero||'')+' · '+(f.controparteNome||'')+' → data IVA '+dmy(feDataIva(f))+(ivaHaOverride(f)?' · indetraibile '+num(f.indetrPerc)+'%':''));
     persist();render();toast('Data IVA aggiornata');return true;});
 }
 function stampaLiqIva(anno,k){
@@ -5450,6 +5488,7 @@ function stampaLiqIva(anno,k){
       ${P.daVersare>0?r('Totale da versare · scadenza '+dmy(P.scad)+' · cod. '+P.codice,'€ '+eur(P.daVersare),true):''}
       ${P.credito>0?r('IVA da riportare','€ '+eur(P.credito),true):''}
       ${P.versato?r('Versato il '+dmy(P.versato.data),'€ '+eur(P.versato.importo)):''}
+      ${P.lipe?r('Dichiarato in LIPE'+(P.lipe.n?' n. '+esc(P.lipe.n):''),num(P.lipe.daVersare)?'da versare € '+eur(P.lipe.daVersare):'a credito € '+eur(P.lipe.credito)):''}
     </tbody></table>
     ${h('Registro vendite')}
     <table class="goods"><thead><tr><th>Aliquota / Natura</th><th>Imponibile</th><th>Imposta</th></tr></thead><tbody>

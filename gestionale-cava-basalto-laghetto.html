@@ -4076,6 +4076,11 @@ function feNaturaLabel(n){n=String(n||'').toUpperCase();if(!n)return 'Senza IVA'
 function ivaProrata(anno){const p=S.settings&&S.settings.ivaProrata&&S.settings.ivaProrata[String(anno)];return (p===undefined||p===null||p==='')?100:num(p);}
 function ivaFornKey(f){const p=String(f.contropartePiva||'').replace(/\D/g,'');return p?('P'+p):('N'+String(f.controparteNome||'').toUpperCase().replace(/\s+/g,' ').trim());}
 function ivaIndetrPerc(f){const m=S.settings&&S.settings.ivaIndetr;if(!m)return 0;const v=m[ivaFornKey(f)];return v?Math.min(100,Math.max(0,num(v))):0;}
+/* IVA indetraibile di una fattura: arrotondata riga per riga del riepilogo, come nel registro del commercialista */
+function feIvaIndetr(f){const p=ivaIndetrPerc(f);if(!p)return 0;const sg=feSgn(f);
+  const rows=(f.aliquote||[]).filter(r=>Math.abs(num(r.imposta))>0.004);
+  if(!rows.length)return round2(sg*num(f.imposta)*p/100);
+  return round2(rows.reduce((s,r)=>s+round2(sg*num(r.imposta)*p/100),0));}
 function feLabelSaldata(f){if(f.compensa&&f.compensa.length)return 'Compensata';if(feIsNC(f))return f.tipo==='attiva'?'Rimborsata al cliente':'Rimborsata';return f.tipo==='attiva'?'Incassata':'Pagata';}
 function feResiduo(f){const rit=num(f.ritenuta||0),comp=feCompensato(f);if((f.alloc&&f.alloc.length)||comp>0.005)return round2(num(f.totale)-fePagato(f)-rit-comp);return f.pagata?0:round2(num(f.totale)-rit);}
 function feNetto(f){return (f.pagamenti&&f.pagamenti.length)?round2(f.pagamenti.reduce((s,p)=>s+num(p.importo),0)):0;}
@@ -5161,7 +5166,10 @@ function ivaDetrDialog(y){
   const arr=Object.values(m).filter(o=>Math.abs(o.iva)>0.004||num(cfg[o.k])>0)
     .sort((a,b)=>((num(cfg[b.k])>0)-(num(cfg[a.k])>0))||(b.iva-a.iva));
   const body=`<div class="note">${svg(IC.card)}<div><b>Pro-rata:</b> percentuale di IVA detraibile dell&rsquo;anno (la indica il commercialista nella liquidazione, es. 67%).<br>
-      <b>IVA indetraibile per fornitore:</b> quota di IVA che il commercialista non detrae per quel tipo di costo (es. ristoranti 100%, telefonia 50%, pedaggi/auto 60%). Vale per tutte le fatture di quel fornitore.</div></div>
+      <b>IVA indetraibile per fornitore</b> (art. 19-bis1 DPR 633/72), vale per tutte le fatture di quel fornitore:<br>
+      · <b>60%</b> veicoli non strumentali e relative spese (pedaggi, Telepass, tagliandi, riparazioni, carburante dell&rsquo;auto) — lett. c<br>
+      · <b>100%</b> spese di rappresentanza (pranzi, omaggi) — lett. h<br>
+      · <b>0%</b> telefonia, carburante dei mezzi d&rsquo;opera, beni e servizi dell&rsquo;attività (lasciare vuoto)</div></div>
     <div class="field" style="max-width:260px"><label>Pro-rata di detraibilità ${y} (%)</label><input id="iva-pr" type="number" min="0" max="100" step="1" value="${ivaProrata(y)}"></div>
     <div class="section-label">IVA indetraibile per fornitore</div>
     <div style="max-height:46vh;overflow:auto"><table><thead><tr><th>Fornitore</th><th class="num">IVA ${y}</th><th class="num">% indetraibile</th></tr></thead><tbody>
@@ -5266,7 +5274,7 @@ function renderReportStat(c){
         const deb=round2(feYall.filter(f=>f.tipo==='attiva'&&inP(f)).reduce((s,f)=>s+feIvaS(f),0));
         const pas=feYall.filter(f=>f.tipo==='passiva'&&inP(f));
         const lordo=round2(pas.reduce((s,f)=>s+feIvaS(f),0));
-        const ind=round2(pas.reduce((s,f)=>s+feIvaS(f)*ivaIndetrPerc(f)/100,0));
+        const ind=round2(pas.reduce((s,f)=>s+feIvaIndetr(f),0));
         const cre=round2((lordo-ind)*pr/100);
         return {deb,lordo,ind,cre,s:round2(deb-cre)};};
       const periodi = ivaPeriodo==='trim'

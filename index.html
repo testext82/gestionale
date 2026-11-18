@@ -3468,6 +3468,15 @@ function contrattoRAAllegati(raId){raAllegatiDialog(raId,'File allegati al docum
    Registro conferimenti (campo raId), non con DDT. Il contratto «Standard» resta quello di sempre. */
 const RA_ANT_DEF={tipo:'anticipo',codiceCer:'17 05 04',descrizioneCer:'Terre e rocce da scavo diverse da quelle di cui alla voce 17 05 03',
   aliquotaIva:22,anticipoTipo:'iva',anticipoValore:'',giorniPag:60,rendGiorno:5,mesiInattivita:12,omologhe:[],note:''};
+/* Documenti da presentare per ogni cantiere (art. 4.2 del contratto con anticipo e brochure «Linee guida») */
+const RA_ANT_DOCUMENTI=[
+  "Test di cessione: Allegato 3 del D.M. 05/02/1998, sostituito dall'art. 1 del D.M. 186 del 05/04/2006 — laboratorio accreditato ACCREDIA;",
+  "Analisi chimiche: Colonna A della Tabella 1 dell'Allegato 5 alla Parte Quarta, Titolo V, del D.Lgs. 152/2006 (modificato dal D.Lgs. 4 del 16/01/2008 e s.m.i.) — laboratorio accreditato ACCREDIA;",
+  "Verifiche di conformità ai fini della classificazione in base alle caratteristiche di pericolo secondo il Regolamento UE 1357/2014, con giudizio di non pericolosità del rifiuto ai sensi del D.Lgs. 152/2006 e s.m.i., Parte IV, Allegato D — laboratorio accreditato ACCREDIA;",
+  "Verbale di campionamento nel rispetto della norma UNI 10802:2023, a firma di un tecnico iscritto all'albo professionale;",
+  "Caratterizzazione del rifiuto a cura del produttore ai sensi dell'art. 8 del D.M. 05/02/1998: origine e cantiere di produzione, attribuzione del codice EER 17 05 04, campionamento e analisi al primo conferimento, poi ogni 24 mesi e a ogni modifica sostanziale del processo produttivo;",
+  "Formulario di identificazione del rifiuto (FIR) compilato a norma di legge, conforme al RENTRI;",
+  "Iscrizione del trasportatore all'Albo Nazionale Gestori Ambientali (autorizzazione al trasporto dei rifiuti)."];
 const RA_MESI=['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
 const raR3=v=>Math.round(num(v)*1000)/1000;
 function raIsAnt(x){return !!x&&x.tipo==='anticipo';}
@@ -3576,14 +3585,14 @@ function raOmRow(o){
       ${f('om-rapp','Rapporto di prova n°',o.rapportoProva)}
       ${f('om-rappdata','del',o.dataRapporto,{type:'date',on:'onchange="raOmRappData(this)"'})}
       ${f('om-lab','Laboratorio (n° ACCREDIA)',o.laboratorio)}
-      ${f('om-valido','Analisi valide fino al',o.validoFino,{type:'date'})}
+      ${f('om-valido','Test di cessione valido fino al',o.validoFino,{type:'date'})}
       ${f('om-qta','Quantità stimata (t)',o.qtaStimata,{type:'number',step:true})}
       ${f('om-acc','Accettata dal Gestore il',o.dataAccettazione,{type:'date'})}
       <div class="field col2"><label>Trasportatori e automezzi (ragione sociale, iscrizione Albo e categoria, targhe)</label><textarea class="om-trasp" rows="2">${esc(o.trasporti||'')}</textarea></div>
     </div></div>`;
 }
 function raOmAdd(){const box=document.getElementById('ran-om');if(!box)return;const e=box.querySelector('.ra-om-empty');if(e)e.remove();box.insertAdjacentHTML('beforeend',raOmRow({}));}
-function raOmRappData(el){const row=el.closest('.ra-om-row');const v=row&&row.querySelector('.om-valido');if(v&&!v.value&&el.value)v.value=raAddMonthsIso(el.value,24);}
+function raOmRappData(el){const row=el.closest('.ra-om-row');const v=row&&row.querySelector('.om-valido');if(v&&!v.value&&el.value)v.value=raAddMonthsIso(el.value,12);}
 function raOmRemove(btn){
   const row=btn.closest('.ra-om-row');if(!row)return;
   const n=(S.conferimenti||[]).filter(c=>c.omologaId===row.dataset.id).length;
@@ -3594,7 +3603,7 @@ function raOmRead(prev){
   const old={};(prev||[]).forEach(o=>{old[o.id]=o;});
   return [...document.querySelectorAll('#ran-om .ra-om-row')].map(r=>{const g=c=>{const el=r.querySelector('.'+c);return el?el.value.trim():'';};
     return {...(old[r.dataset.id]||{}),id:r.dataset.id,cantiere:g('om-cant'),lavori:g('om-lav'),produttore:g('om-prod'),produttorePiva:g('om-piva'),rentri:g('om-rentri'),
-      formatoFir:g('om-fir'),rapportoProva:g('om-rapp'),dataRapporto:g('om-rappdata'),laboratorio:g('om-lab'),validoFino:g('om-valido')||(g('om-rappdata')?raAddMonthsIso(g('om-rappdata'),24):''),
+      formatoFir:g('om-fir'),rapportoProva:g('om-rapp'),dataRapporto:g('om-rappdata'),laboratorio:g('om-lab'),validoFino:g('om-valido')||(g('om-rappdata')?raAddMonthsIso(g('om-rappdata'),12):''),
       qtaStimata:g('om-qta')===''?'':num(g('om-qta')),dataAccettazione:g('om-acc'),trasporti:g('om-trasp')};
   }).filter(o=>o.cantiere||o.produttore||o.rapportoProva);
 }
@@ -3652,7 +3661,7 @@ function openContrattoRAAnt(id){
       <div class="section-label">Cantieri — schede di omologa (Allegato A)</div>
       <div class="field col2"><div id="ran-om">${om}</div>
         <button type="button" class="btn sm" onclick="raOmAdd()">${svg(IC.plus,1.9)} Aggiungi cantiere</button>
-        <span class="hint">Le analisi valgono 24 mesi dalla data del rapporto di prova (art. 8 D.M. 5/2/1998), salvo modifiche del processo.</span></div>
+        <span class="hint">Il test di cessione vale 12 mesi dalla data del rapporto di prova (art. 9 D.M. 5/2/1998): la scadenza viene proposta da sola e si può modificare.</span></div>
 
       <div class="section-label">Altro</div>
       <div class="field col2"><label>Pattuizioni aggiuntive (stampate prima delle firme)</label><textarea id="ran-note" rows="3">${esc(x.note||'')}</textarea></div>
@@ -3730,7 +3739,7 @@ function raAntScheda(id){
         <td class="actions">${r.rata>0?(r.pagata?`<span class="pill ok">Pagata ${dmy(r.dataPag)}</span> <button class="linklike" onclick="raAntToggleRata('${x.id}|${r.m}');raAntScheda('${x.id}')">annulla</button>`:btn('Segna pagata',`raAntToggleRata('${x.id}|${r.m}');raAntScheda('${x.id}')`)):''}</td></tr>`).join('')}
       </tbody></table>`:`<div class="sub">Nessun formulario registrato per questo contratto.</div>`}
     <div class="section-label" style="margin-top:12px">Cantieri (omologhe)</div>
-    ${(x.omologhe||[]).length?`<table><thead><tr><th>Omologa</th><th>Cantiere</th><th>Produttore</th><th>Analisi valide fino al</th><th class="num">Formulari</th><th class="num">t</th></tr></thead><tbody>
+    ${(x.omologhe||[]).length?`<table><thead><tr><th>Omologa</th><th>Cantiere</th><th>Produttore</th><th>Test di cessione valido fino al</th><th class="num">Formulari</th><th class="num">t</th></tr></thead><tbody>
       ${x.omologhe.map(o=>{const g=o.validoFino?raGiorni(t,o.validoFino):null;const p=perOm[o.id]||{n:0,t:0};
         return `<tr><td class="strong">${esc(o.numero||'')}</td><td>${esc(o.cantiere||'')}</td><td class="sub">${esc(o.produttore||'—')}</td>
         <td>${o.validoFino?`<span class="pill ${g<0?'danger':(g<=30?'warn':'ok')}">${dmy(o.validoFino)}</span>`:'<span class="sub">—</span>'}</td><td class="num">${p.n}</td><td class="num">${qty(raR3(p.t))}</td></tr>`;}).join('')}
@@ -3897,10 +3906,10 @@ function raSchedaHtml(o,x){
   const righe=[['Omologa n°',o.numero],['Cantiere sito in',o.cantiere],['Lavori / committente',o.lavori],
     ['Produttore del rifiuto',[o.produttore,o.produttorePiva?'P.IVA '+o.produttorePiva:'',o.rentri?('iscritto al RENTRI: '+(o.rentri==='si'?'sì':'no')):''].filter(Boolean).join(' — ')],
     ['Codice E.E.R.',x.codiceCer||'17 05 04'],['Rapporto di prova n°',[o.rapportoProva,o.dataRapporto?'del '+dmy(o.dataRapporto):''].filter(Boolean).join(' ')],['Laboratorio (accreditamento ACCREDIA)',o.laboratorio],
-    ['Esito','Test di cessione, analisi chimiche (colonna A), classificazione di pericolo e verbale di campionamento conformi (art. 4)'],['Analisi valide fino al',o.validoFino?dmy(o.validoFino):''],
+    ['Esito','Test di cessione, analisi chimiche (colonna A) e classificazione di pericolo conformi; rifiuto non pericoloso (art. 4.2)'],['Test di cessione valido fino al',o.validoFino?dmy(o.validoFino):''],
     ['Quantità stimata',o.qtaStimata!==''&&o.qtaStimata!=null?qty(o.qtaStimata)+' t':''],['Trasportatori e automezzi',o.trasporti],
     ['Formulario',o.formatoFir==='xFIR'?'xFIR digitale':(o.formatoFir==='cartaceo'?'cartaceo D.M. 59/2023':'☐ xFIR digitale   ☐ cartaceo D.M. 59/2023')],
-    ['Allegati','Rapporto di prova; verbale di campionamento; elenco automezzi'],
+    ['Allegati','Documenti dell\'art. 4.2 (punti 1–5) del contratto; elenco automezzi e iscrizioni all\'Albo dei trasportatori'],
     ['Accettazione del Gestore',(o.dataAccettazione?'Data '+dmy(o.dataAccettazione):'Data ………………')+' — firma Cava Basalto Laghetto S.r.l.'],['Firma del Conferitore','']];
   return `<table class="ra-tab ra-scheda"><tbody>${righe.map(([l,v])=>`<tr><td style="width:34%;color:#555">${l}</td><td>${vuoto(v)}</td></tr>`).join('')}</tbody></table>`;
 }
@@ -3941,7 +3950,7 @@ function raAntDocHtml(x,opt){
     ${li(["Il Gestore esercita l'attività di recupero ambientale R10 nel sito di Via Casilina Km 22,500, Monte Compatri (RM): comunicazione di inizio attività prot. Provincia di Roma n° 63619 del 19/04/2010; A.U.A. (Autorizzazione Unica Ambientale) R.U. 746 del 28/02/2018.",
       `Il Conferitore esegue lavori in più cantieri e intende conferire al Gestore le terre e rocce da scavo prodotte, classificate EER ${e(x.codiceCer||'17 05 04')}, senza individuare oggi uno specifico cantiere.`,
       `Le Parti stipulano quindi un contratto con anticipo, in forma di contratto aperto. Il contratto fissa prezzo e quantitativo massimo, senza termine di durata, salvo la chiusura dopo ${F(mesiIn,30)} mesi senza scarichi. Il corrispettivo è fatturato per intero alla firma; si paga con un anticipo e con rate mensili sulle quantità effettivamente conferite.`,
-      "Ogni cantiere si aggiunge con la scheda di omologa dell'Allegato A, che riporta il rapporto di prova richiesto dall'art. 8 del D.M. 5/2/1998.",
+      "Ogni cantiere si aggiunge con la scheda di omologa dell'Allegato A, con i documenti richiesti dagli artt. 8 e 9 del D.M. 5/2/1998.",
       "Le premesse e l'Allegato A (scheda di omologa del cantiere) fanno parte integrante del contratto."])}
     ${art(1,'Oggetto')}
     <p class="ra-p">Il Gestore riceve a recupero ambientale R10 le terre e rocce da scavo del Conferitore indicate in tabella. Provengono dai cantieri attivati con l'Allegato A (art. 4).</p>
@@ -3959,15 +3968,10 @@ function raAntDocHtml(x,opt){
       "Il Gestore comunica la chiusura via PEC. Si applica l'art. 9."])}
     ${art(4,'Attivazione dei cantieri (omologa)')}
     ${li(["Prima del primo carico da un cantiere, il Conferitore invia al Gestore la scheda di omologa (Allegato A), compilata e firmata.",
-      `Per il conferimento deve essere effettuata la caratterizzazione del rifiuto attraverso il campionamento e l'analisi chimica del materiale da laboratorio accreditato ACCREDIA a norma UNI CEI EN ISO/IEC 17025. Il materiale deve essere conforme a quanto previsto dalla legge; il rapporto di prova, allegato alla scheda, comprende:
-        <ol class="ra-ol ra-sub-ol" type="1">
-          <li>Test di cessione: Allegato 3 del D.M. 05/02/1998, modificato dall'art. 1 del D.M. 186 del 05/04/2006;</li>
-          <li>Analisi chimiche: Colonna A della Tabella 1 dell'Allegato 5 alla Parte Quarta, Titolo V, del D.Lgs. 152/2006, modificato dal D.Lgs. 4 del 16/01/2008 e s.m.i.;</li>
-          <li>Verifiche di conformità ai fini della classificazione in base alle caratteristiche di pericolo secondo il Regolamento UE 1357/2014, ai sensi del D.Lgs. 152/2006 e s.m.i., Parte IV, Allegato D;</li>
-          <li>Verbale di campionamento nel rispetto della norma UNI 10802:2023.</li>
-        </ol>`,
+      `Per il conferimento deve essere effettuata la caratterizzazione del rifiuto attraverso il campionamento e l'analisi chimica del materiale da laboratorio accreditato ACCREDIA a norma UNI CEI EN ISO/IEC 17025. Il materiale deve essere conforme a quanto previsto dalla legge. Con la scheda il Conferitore presenta i seguenti documenti:
+        <ol class="ra-ol ra-sub-ol" type="1">${RA_ANT_DOCUMENTI.map(t=>`<li>${t}</li>`).join('')}</ol>`,
       "Il cantiere è attivo solo dopo l'accettazione scritta del Gestore, che assegna un numero di omologa. Il numero va riportato su ogni formulario. Il Gestore non accetta carichi da cantieri non attivi.",
-      "A norma dell'art. 8 del D.M. 5/2/1998, le analisi si rifanno ogni 24 mesi. Si rifanno comunque a ogni modifica sostanziale del processo di produzione del rifiuto, per esempio un nuovo fronte di scavo con materiale diverso. Senza analisi valide il cantiere è sospeso."])}
+      "Il test di cessione si ripete almeno ogni 12 mesi, salvo diverse prescrizioni dell'autorità competente (art. 9 del D.M. 5/2/1998); la caratterizzazione del rifiuto almeno ogni 24 mesi (art. 8). Si rifanno comunque a ogni modifica sostanziale del processo di produzione del rifiuto, per esempio un nuovo fronte di scavo con materiale diverso. Senza analisi valide il cantiere è sospeso."])}
     ${art(5,'Modalità di conferimento')}
     <p class="ra-p">Terre e rocce da scavo per il recupero ambientale R10, alle condizioni seguenti:</p>
     ${li(["Eventuali materiali di risulta trovati nelle terre e rocce non vanno caricati. Restano nell'area di cantiere e il loro smaltimento è a carico del Conferitore.",
@@ -4038,6 +4042,8 @@ function printContrattoRAAntBianco(){
   raOpenPaged({type:'contrattoRA',id:'',doc:{},title:'Contratto R.A. con anticipo — in bianco',filename:'Contratto_RA_anticipo_in_bianco',
     email:{to:'',subject:'Contratto con anticipo per il conferimento di terre e rocce da scavo',body:''}},raAntDocHtml({...RA_ANT_DEF,omologhe:[]},{blank:true}),'');
 }
+/* Contratto standard in bianco: testi standard, campi del cliente, prezzi e quantità vuoti */
+function printContrattoRAStdBianco(){printContrattoRA('',{umPrezzo:'',umQuantita:'Quantità',prezzi:[],quantita:'',pagamento:''});}
 /* Allegato A in bianco: una scheda di omologa da compilare */
 function printAllegatoABianco(){
   const html=`<div class="doc ra ra-ant ra-paged">
@@ -4045,7 +4051,7 @@ function printAllegatoABianco(){
     <div class="ra-title">ALLEGATO A — SCHEDA DI OMOLOGA DEL CANTIERE</div>
     <div class="ra-sub">Contratto con anticipo per il conferimento di terre e rocce da scavo — EER 17 05 04 — Recupero ambientale R10</div>
     <p class="ra-p">Contratto con anticipo n° ${raLinea('',90)} del ${raLinea('',90)} — Conferitore ${raLinea('',240)}</p>
-    <p class="ra-p">Si compila una scheda per ogni cantiere, prima del primo carico. Alla scheda vanno allegati il rapporto di prova (test di cessione, analisi chimiche, verifiche di classificazione di pericolo) e il verbale di campionamento previsti dall'art. 4 del contratto, oltre all'elenco degli automezzi.</p>
+    <p class="ra-p">Si compila una scheda per ogni cantiere, prima del primo carico. Alla scheda vanno allegati i documenti dell'art. 4.2 del contratto (test di cessione, analisi chimiche, classificazione di pericolo, verbale di campionamento, caratterizzazione del rifiuto) e l'elenco degli automezzi con le iscrizioni all'Albo dei trasportatori.</p>
     ${raSchedaHtml({},{})}
     <div class="ra-pie">${esc(RA_DEF.piePagina)} · Allegato A — Scheda di omologa del cantiere</div>
   </div>`;
@@ -4056,10 +4062,11 @@ function raStampeBianco(){
   const card=(tit,txt,fn)=>`<button type="button" class="btn" style="display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:14px;text-align:left;white-space:normal;height:auto;line-height:1.4" onclick="closeModal();setTimeout(()=>${fn}(),0)">
       <b style="font-size:14px">${tit}</b><span class="sub" style="font-weight:400">${txt}</span></button>`;
   openModal('Stampa in bianco',`<div class="note">${svg(IC.print)}<div>Moduli senza dati del cliente e senza importi, da compilare a mano. I dati di Cava restano stampati.</div></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+      ${card('Contratto standard','Il contratto R.A. di sempre con i campi del cliente, il cantiere, i prezzi e le quantità vuoti.','printContrattoRAStdBianco')}
       ${card('Contratto con anticipo','Tutto il contratto con i campi vuoti, più una scheda di omologa (Allegato A) in bianco.','printContrattoRAAntBianco')}
       ${card('Allegato A','Solo la scheda di omologa del cantiere, da compilare per ogni nuovo cantiere.','printAllegatoABianco')}
-    </div>`,()=>true,{submitLabel:'Chiudi'});
+    </div>`,()=>true,{submitLabel:'Chiudi',wide:true});
 }
 
 /* ---- Scadenzario: anticipo, rate mensili e restituzione ---- */
@@ -4230,9 +4237,9 @@ function printContratto(id){
   openPreview({type:'contratto',id,doc:c,title:`Contratto ${nn!=='—'?nn:''}`.trim(),filename:`Contratto_${String(nn).replace(/\W+/g,'-')||c.id}`,
     email:{to:cli.email||cli.pec||'',subject:`Contratto ${contrattoTipoNome(c)} - Cava Basalto Laghetto srl`,body:`Buongiorno,\nin allegato il contratto.\n\nCava Basalto Laghetto srl`}},html);
 }
-function printContrattoRA(id){
-  {const r0=S.contrattiRA.find(s=>s.id===id);if(raIsAnt(r0)){printContrattoRAAnt(id);return;}}
-  const x={...RA_DEF,...S.contrattiRA.find(s=>s.id===id)};
+function printContrattoRA(id,recBianco){
+  if(!recBianco){const r0=S.contrattiRA.find(s=>s.id===id);if(raIsAnt(r0)){printContrattoRAAnt(id);return;}}
+  const x={...RA_DEF,...(recBianco||S.contrattiRA.find(s=>s.id===id))};
   const umP=x.umPrezzo||x.um||'Metri cubi', umQ=x.umQuantita||x.um||'Metri cubi';
   const html=`<div class="doc ra">
     <div class="hdr">${coHeader()}</div>
@@ -4280,7 +4287,7 @@ function printContrattoRA(id){
     <div class="ra-firma-line"></div><div class="ra-firma-cap">(firma del cliente)</div>
     <div class="ra-pie">${esc(x.piePagina)} · Contratto di conferimento — EER 17.05.04</div>
   </div>`;
-  openPreview({type:'contrattoRA',id,doc:x,title:`Contratto R.A. ${raNum(x)}`.trim(),filename:`Contratto_RA_${String(raNum(x)).replace(/\W+/g,'-')||'nuovo'}`,
+  openPreview({type:'contrattoRA',id,doc:x,title:`Contratto R.A. ${raNum(x)}`.trim(),filename:recBianco?'Contratto_RA_standard_in_bianco':`Contratto_RA_${String(raNum(x)).replace(/\W+/g,'-')||'nuovo'}`,
     email:{to:x.email||'',subject:`Contratto per il conferimento di terre e rocce da scavo${raNum(x)?' n. '+raNum(x):''}`,
       body:`Buongiorno,\nin allegato il contratto per il conferimento di terre e rocce da scavo (EER 17.05.04).\n\nCava Basalto Laghetto srl`}},html);
   setTimeout(()=>raCalcPagine(id),80);

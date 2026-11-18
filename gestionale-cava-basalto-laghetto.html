@@ -3316,7 +3316,7 @@ function renderContrattiRA(c){
   if(term)rows=rows.filter(x=>[raNum(x),x.ditta,x.cantiere,x.produttore].filter(Boolean).join(' ').toLowerCase().includes(term));
   rows.sort((a,b)=>(b.data||'').localeCompare(a.data||''));
   c.innerHTML=`
-    <div class="note">${svg(IC.contract)}<div>Compila e modifica il <b>contratto per il conferimento di terre e rocce da scavo</b> (recupero ambientale R10). Ogni parte del testo è modificabile e l'unità di misura si può impostare su <b>Metri cubi</b> o <b>Tonnellate</b>.</div></div>
+    <div class="note">${svg(IC.contract)}<div>Contratti per il conferimento di terre e rocce da scavo (recupero ambientale R10), di due tipi: <b>Standard</b>, con testi modificabili e unità di misura a scelta, e <b>Con anticipo</b>, con fattura alla firma, anticipo e rate mensili sulle tonnellate dei formulari.</div></div>
     <div class="toolbar">
       <div class="search">${svg(IC.search)}<input placeholder="Cerca per numero, ditta, cantiere…" value="${esc(searchTerm.contrattiRA||'')}" data-sf="contrattiRA" oninput="searchTerm.contrattiRA=this.value;render()"></div>
     </div>
@@ -3326,14 +3326,15 @@ function renderContrattiRA(c){
         : rows.length===0 ? emptyState('search','Nessun risultato','Cambia il termine di ricerca.')
         : `<table><thead><tr><th>N.</th><th>Data</th><th>Ditta</th><th>Cantiere</th><th class="num">Prezzo</th><th class="num">Quantità</th><th>Allegati</th><th></th></tr></thead>
           <tbody>${rows.map(x=>`<tr>
-            <td class="strong">${esc(raNum(x)||'—')}</td>
+            <td class="strong">${esc(raNum(x)||'—')}${raIsAnt(x)?`<div><span class="pill accent">Con anticipo</span>${x.stato==='chiuso'?' <span class="pill grey">Chiuso</span>':''}</div>`:''}</td>
             <td class="sub">${x.data?dmy(x.data):'—'}</td>
             <td>${esc(x.ditta||'—')}</td>
-            <td class="sub">${esc(x.cantiere||'—')}</td>
+            <td class="sub">${raIsAnt(x)?(()=>{const n=(x.omologhe||[]).length;return n?n+(n===1?' cantiere':' cantieri'):'nessun cantiere';})():esc(x.cantiere||'—')}</td>
             <td class="num sub">${(()=>{const pr=(x.prezzi&&x.prezzi.length)?x.prezzi.filter(p=>p&&(p.prezzo!==''&&p.prezzo!=null)):((x.prezzo!=null&&x.prezzo!=='')?[{um:x.umPrezzo||x.um||'',prezzo:x.prezzo}]:[]);return pr.length?pr.map(p=>'€ '+eur(p.prezzo)+' / '+esc(p.um||'')).join('<br>'):'—';})()}</td>
-            <td class="num sub">${x.quantita?qty(x.quantita)+' '+esc(x.umQuantita||x.um||''):'—'}</td>
+            <td class="num sub">${raIsAnt(x)?(()=>{let st;try{st=raAntStato(x);}catch(e){return '—';}const av=st.avvisi.filter(a=>a.cls!=='ok').length;return `${qty(st.tConf)} / ${qty(st.k.Q)} t${av?`<div><span class="pill ${st.avvisi.some(a=>a.cls==='danger')?'danger':'warn'}" title="${esc(st.avvisi.map(a=>a.txt).join(' · '))}">${av} ${av===1?'avviso':'avvisi'}</span></div>`:''}`;})():(x.quantita?qty(x.quantita)+' '+esc(x.umQuantita||x.um||''):'—')}</td>
             <td class="sub">${(x.allegati||[]).length?`<button class="linklike" title="Apri o scarica gli allegati" onclick="raAllegatiDialog('${x.id}')">${svg(IC.clip,1.9)} ${(x.allegati||[]).length}</button>`:'—'}</td>
             <td class="actions">
+              ${raIsAnt(x)?`<button class="btn sm" title="Contatori, rate, rendiconto, fattura e chiusura" onclick="raAntScheda('${x.id}')">Scheda</button>`:''}
               <button class="icon-btn sm" title="Anteprima / Stampa / PDF" onclick="printContrattoRA('${x.id}')">${svg(IC.print,1.9)}</button>
               <button class="icon-btn sm" title="Modifica" onclick="openContrattoRA('${x.id}')">${svg(IC.edit,1.9)}</button>
               <button class="icon-btn sm danger" title="Elimina" onclick="delContrattoRA('${x.id}')">${svg(IC.trash,1.9)}</button>
@@ -3342,6 +3343,17 @@ function renderContrattiRA(c){
 }
 function delContrattoRA(id){
   const ra=S.contrattiRA.find(x=>x.id===id);
+  if(raIsAnt(ra)){
+    const nf=(S.conferimenti||[]).filter(c=>c.raId===id).length;
+    if(nf){infoDialog('Impossibile eliminare',`<div class="note">${svg(IC.shield)}<div>Al contratto sono collegati <b>${nf} formulari</b> nel Registro conferimenti. Scollegali o eliminali prima di eliminare il contratto.</div></div>`);return;}
+    const f=raAntFattura(ra);
+    confirmDialog('Eliminare questo contratto?',f?`La fattura n. ${f.numero}/${f.anno} resta e viene solo scollegata dal contratto.`:'Operazione non reversibile.',()=>{
+      S.contrattiRA=S.contrattiRA.filter(x=>x.id!==id);releaseNumber('contrattoRA',S.contrattiRA,ra);
+      if(f)delete f.raId;
+      logAction('Contratto R.A. con anticipo eliminato',raNum(ra)+' · '+(ra.ditta||''));
+      persist();render();toast('Contratto eliminato');attRemoveAll(ra.allegati);});
+    return;
+  }
   const linked=(ra&&ra.contrattoId)?S.contratti.find(c=>c.id===ra.contrattoId):null;
   const usato=linked?entityUsage('contratti',linked.id).length>0:false;
   const msg=linked?(usato?'Il contratto collegato in «Contratti» è usato in documenti: verrà mantenuto e solo scollegato.':'Verrà eliminato anche il contratto collegato in «Contratti».'):'Operazione non reversibile.';
@@ -3421,7 +3433,542 @@ function raAllegatiDialog(raId,intro){
     </div>`).join('')}</div>`);
 }
 function contrattoRAAllegati(raId){raAllegatiDialog(raId,'File allegati al documento di recupero ambientale collegato. Clicca per aprire o scaricare.');}
-function openContrattoRA(id){
+/* ===================== CONTRATTI R.A. CON ANTICIPO =====================
+   Tipo «anticipo»: una fattura per l'intero quantitativo alla firma, anticipo (pari all'IVA, importo fisso
+   o percentuale) e rate mensili = tonnellate dei formulari del mese × importo unitario di rata.
+   Più cantieri, ciascuno con scheda di omologa (Allegato A). I carichi si registrano come formulari nel
+   Registro conferimenti (campo raId), non con DDT. Il contratto «Standard» resta quello di sempre. */
+const RA_ANT_DEF={tipo:'anticipo',codiceCer:'17 05 04',descrizioneCer:'Terre e rocce da scavo diverse da quelle di cui alla voce 17 05 03',
+  aliquotaIva:22,anticipoTipo:'iva',anticipoValore:'',giorniPag:60,rendGiorno:5,rendContest:8,mesiInattivita:12,omologhe:[],note:''};
+const RA_MESI=['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
+const raR3=v=>Math.round(num(v)*1000)/1000;
+function raIsAnt(x){return !!x&&x.tipo==='anticipo';}
+function raMeseLab(ym){const [y,m]=String(ym||'').split('-');return (RA_MESI[(+m||1)-1]||'')+' '+(y||'');}
+function raEndOfMonth(ym){const [y,m]=String(ym).split('-').map(Number);return new Date(Date.UTC(y,m,0)).toISOString().slice(0,10);}
+function raAddDaysIso(iso,n){if(!iso)return '';const d=new Date(String(iso).slice(0,10)+'T00:00:00Z');if(isNaN(d))return '';d.setUTCDate(d.getUTCDate()+(parseInt(n)||0));return d.toISOString().slice(0,10);}
+function raAddMonthsIso(iso,n){if(!iso)return '';const [y,m,dd]=String(iso).slice(0,10).split('-').map(Number);if(!y)return '';
+  const t=new Date(Date.UTC(y,m-1+(parseInt(n)||0),1));const last=new Date(Date.UTC(t.getUTCFullYear(),t.getUTCMonth()+1,0)).getUTCDate();
+  t.setUTCDate(Math.min(dd||1,last));return t.toISOString().slice(0,10);}
+function raGiorni(da,a){return Math.round((new Date(a+'T00:00:00Z')-new Date(da+'T00:00:00Z'))/86400000);}
+/* Importi del contratto: imponibile, IVA, totale fattura, anticipo, importo unitario di rata */
+function raAntCalc(x){
+  const Q=num(x.quantitaMax),P=num(x.prezzoT),A=num(x.aliquotaIva);
+  const imp=round2(Q*P),iva=round2(imp*A/100),tot=round2(imp+iva);
+  let ant=iva;
+  if(x.anticipoTipo==='importo')ant=round2(num(x.anticipoValore));
+  else if(x.anticipoTipo==='perc')ant=round2(tot*num(x.anticipoValore)/100);
+  const saldo=round2(tot-ant);
+  const unit=Q>0?round2(saldo/Q):0;
+  return {Q,P,A,imp,iva,tot,ant,saldo,unit};
+}
+function raAntDescAnticipo(x,k){k=k||raAntCalc(x);
+  if(x.anticipoTipo==='importo')return 'a importo fisso di € '+eur(k.ant);
+  if(x.anticipoTipo==='perc')return 'pari al '+qty(x.anticipoValore)+'% del totale della fattura, IVA inclusa: € '+eur(k.ant);
+  return "pari all'IVA della fattura: € "+eur(k.ant);
+}
+/* Tonnellate di un formulario (il peso a destino è in t; altre U.M. convertite con i kg per unità) */
+function confTonnellate(c){const q=num(c.quantita);if(!c.um||c.um==='Tonnellate')return q;const kg=kgFactor(c.um);return kg>0?q*kg/1000:q;}
+function raAntConf(x){return (S.conferimenti||[]).filter(c=>c.raId===x.id).sort((a,b)=>(a.data||'').localeCompare(b.data||'')||String(a.fir||'').localeCompare(String(b.fir||'')));}
+/* Rate mese per mese dai formulari: l'ultima rata chiude esattamente il residuo della fattura */
+function raAntMesi(x){
+  const k=raAntCalc(x),by={};
+  raAntConf(x).forEach(c=>{const m=String(c.data||'').slice(0,7);if(m.length!==7)return;(by[m]=by[m]||{t:0,n:0,items:[]});by[m].t+=confTonnellate(c);by[m].n++;by[m].items.push(c);});
+  let cum=0,rateTot=0;const gg=num(x.giorniPag)||60;
+  return Object.keys(by).sort().map(m=>{
+    const r=by[m],t=raR3(r.t),prima=cum;cum=raR3(cum+t);
+    const tEff=k.Q>0?Math.max(0,raR3(Math.min(cum,k.Q)-Math.min(prima,k.Q))):t;
+    let rata=0;
+    if(k.Q>0&&prima<k.Q)rata=(cum>=k.Q)?round2(k.saldo-rateTot):round2(tEff*k.unit);
+    rateTot=round2(rateTot+rata);
+    const pag=(x.ratePagate||{})[m];
+    return {m,t,tEff,oltre:raR3(t-tEff),n:r.n,items:r.items,cum:raR3(Math.min(cum,k.Q||cum)),rata,scad:raAddDaysIso(raEndOfMonth(m),gg),pagata:!!pag,dataPag:(pag&&pag.data)||''};
+  });
+}
+function raAntFattura(x){return x&&x.fatturaId?S.fatture.find(f=>f.id===x.fatturaId):null;}
+/* Stato del contratto: contatori, importi maturati/incassati, avvisi */
+function raAntStato(x){
+  const k=raAntCalc(x),mesi=raAntMesi(x),t=today();
+  const tReal=raR3(mesi.reduce((s,r)=>s+r.t,0));
+  const tConf=k.Q>0?Math.min(k.Q,tReal):tReal,tRes=Math.max(0,raR3(k.Q-tConf)),oltre=Math.max(0,raR3(tReal-k.Q));
+  const rateMat=round2(mesi.reduce((s,r)=>s+r.rata,0)),ratePag=round2(mesi.filter(r=>r.pagata).reduce((s,r)=>s+r.rata,0));
+  const antInc=!!x.anticipoIncassato;
+  const maturato=round2(k.ant+rateMat),incassato=round2((antInc?k.ant:0)+ratePag);
+  const residuoFatt=Math.max(0,round2(k.tot-maturato));
+  const dateConf=raAntConf(x).map(c=>c.data).filter(Boolean).sort();
+  const lastData=dateConf.length?dateConf[dateConf.length-1]:(x.data||'');
+  const mesiIn=num(x.mesiInattivita)||12;
+  const chiusuraInatt=lastData?raAddMonthsIso(lastData,mesiIn):'';
+  const avvisi=[];
+  if(x.stato!=='chiuso'){
+    if(k.Q>0&&tConf>=k.Q)avvisi.push({cls:'ok',txt:'Quantitativo massimo raggiunto: puoi fare il conteggio finale e chiudere il contratto.'});
+    else if(k.Q>0&&tConf>=0.9*k.Q)avvisi.push({cls:'warn',txt:`Conferito il ${Math.floor(tConf/k.Q*100)}% del quantitativo massimo: restano ${qty(tRes)} t.`});
+    if(chiusuraInatt&&chiusuraInatt<=t&&tConf<k.Q)avvisi.push({cls:'danger',txt:`Nessuno scarico da ${mesiIn} mesi (ultimo riferimento: ${dmy(lastData)}): il contratto va chiuso con il conteggio di chiusura (art. 3).`});
+    (x.omologhe||[]).forEach(o=>{if(!o.validoFino)return;const g=raGiorni(t,o.validoFino);
+      if(g<0)avvisi.push({cls:'danger',txt:`Analisi scadute il ${dmy(o.validoFino)} — omologa ${o.numero||''} (${o.cantiere||'cantiere'}): il cantiere è sospeso.`});
+      else if(g<=30)avvisi.push({cls:'warn',txt:`Analisi in scadenza il ${dmy(o.validoFino)} — omologa ${o.numero||''} (${o.cantiere||'cantiere'}).`});});
+    if(!raAntFattura(x))avvisi.push({cls:'warn',txt:'Fattura alla firma non ancora creata.'});
+    if(!antInc&&k.ant>0)avvisi.push({cls:'warn',txt:'Anticipo non ancora registrato come incassato: i conferimenti iniziano dopo l\'accredito.'});
+    if(oltre>0)avvisi.push({cls:'danger',txt:`Formulari oltre il quantitativo massimo: ${qty(oltre)} t non coperte dal contratto (serve un atto aggiuntivo).`});
+  }
+  return {k,mesi,tReal,tConf,tRes,oltre,rateMat,ratePag,antInc,maturato,incassato,residuoFatt,lastData,chiusuraInatt,avvisi};
+}
+/* Conteggio di chiusura anticipata: nota di credito per la quantità non conferita e restituzione della quota di anticipo */
+function raAntChiusuraCalc(x,st){
+  st=st||raAntStato(x);const k=st.k;
+  const tNon=Math.max(0,raR3(k.Q-st.tConf));
+  const ncImp=round2(tNon*k.P),ncIva=round2(ncImp*k.A/100),nc=round2(ncImp+ncIva);
+  const rest=k.Q>0?round2(k.ant*tNon/k.Q):0;
+  return {tNon,ncImp,ncIva,nc,rest};
+}
+function raAntNuovo(){const n=nextNumber('contrattoRA');return {id:uid(),...RA_ANT_DEF,data:today(),numero:n.numero,anno:n.anno,pagine:'',omologhe:[],allegati:[]};}
+
+/* ---- Editor ---- */
+function raSceltaTipo(){
+  const card=(tit,txt,fn)=>`<button type="button" class="btn" style="display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:14px;text-align:left;white-space:normal;height:auto;line-height:1.4" onclick="closeModal();setTimeout(()=>${fn}(),0)">
+      <b style="font-size:14px">${tit}</b><span class="sub" style="font-weight:400">${txt}</span></button>`;
+  openModal('Nuovo contratto R.A.',`<div class="note">${svg(IC.contract)}<div>Scegli il tipo di contratto per il conferimento di terre e rocce da scavo.</div></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      ${card('Standard','Il contratto R.A. già presente nel gestionale: un cantiere con rapporto di prova, prezzi per unità di misura, pagamento con la modalità scelta.','openContrattoRAStd')}
+      ${card('Con anticipo','Una fattura per l\'intero quantitativo alla firma, anticipo e rate mensili sulle tonnellate dei formulari. Più cantieri, ciascuno con la sua scheda di omologa.','openContrattoRAAnt')}
+    </div>`,()=>true,{submitLabel:'Chiudi'});
+}
+function raOmRow(o){
+  o=o||{};const id=o.id||uid();
+  const f=(cls,lab,val,extra)=>`<div class="field ${extra&&extra.col2?'col2':''}"><label>${lab}</label><input class="${cls}" ${extra&&extra.type?`type="${extra.type}"`:''} ${extra&&extra.step?'step="any"':''} value="${esc(val==null?'':val)}" ${extra&&extra.on?extra.on:''}></div>`;
+  return `<div class="ra-om-row card" data-id="${esc(id)}" style="padding:10px 12px;margin-bottom:10px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><b>Omologa ${esc(o.numero||'(nuova)')}</b><span style="flex:1"></span>
+      <button type="button" class="icon-btn sm danger" title="Togli questo cantiere" onclick="raOmRemove(this)">${svg(IC.trash,1.9)}</button></div>
+    <div class="form-grid">
+      ${f('om-cant','Cantiere sito in <span class="req">*</span>',o.cantiere,{col2:true})}
+      ${f('om-lav','Lavori / committente (CIG/CUP)',o.lavori,{col2:true})}
+      ${f('om-prod','Produttore del rifiuto',o.produttore)}
+      ${f('om-piva','P.IVA produttore',o.produttorePiva)}
+      <div class="field"><label>Produttore iscritto al RENTRI</label><select class="om-rentri"><option value="">—</option><option value="si" ${o.rentri==='si'?'selected':''}>Sì</option><option value="no" ${o.rentri==='no'?'selected':''}>No</option></select></div>
+      <div class="field"><label>Formulario</label><select class="om-fir"><option value="">—</option><option value="xFIR" ${o.formatoFir==='xFIR'?'selected':''}>xFIR digitale</option><option value="cartaceo" ${o.formatoFir==='cartaceo'?'selected':''}>Cartaceo D.M. 59/2023</option></select></div>
+      ${f('om-rapp','Rapporto di prova n°',o.rapportoProva)}
+      ${f('om-rappdata','del',o.dataRapporto,{type:'date',on:'onchange="raOmRappData(this)"'})}
+      ${f('om-lab','Laboratorio (n° ACCREDIA)',o.laboratorio)}
+      ${f('om-valido','Analisi valide fino al',o.validoFino,{type:'date'})}
+      ${f('om-qta','Quantità stimata (t)',o.qtaStimata,{type:'number',step:true})}
+      ${f('om-acc','Accettata dal Gestore il',o.dataAccettazione,{type:'date'})}
+      <div class="field col2"><label>Trasportatori e automezzi (ragione sociale, iscrizione Albo e categoria, targhe)</label><textarea class="om-trasp" rows="2">${esc(o.trasporti||'')}</textarea></div>
+    </div></div>`;
+}
+function raOmAdd(){const box=document.getElementById('ran-om');if(!box)return;const e=box.querySelector('.ra-om-empty');if(e)e.remove();box.insertAdjacentHTML('beforeend',raOmRow({}));}
+function raOmRappData(el){const row=el.closest('.ra-om-row');const v=row&&row.querySelector('.om-valido');if(v&&!v.value&&el.value)v.value=raAddMonthsIso(el.value,24);}
+function raOmRemove(btn){
+  const row=btn.closest('.ra-om-row');if(!row)return;
+  const n=(S.conferimenti||[]).filter(c=>c.omologaId===row.dataset.id).length;
+  if(n){toast(`Questa omologa è usata in ${n} formulari: non si può togliere`);return;}
+  row.remove();
+}
+function raOmRead(prev){
+  const old={};(prev||[]).forEach(o=>{old[o.id]=o;});
+  return [...document.querySelectorAll('#ran-om .ra-om-row')].map(r=>{const g=c=>{const el=r.querySelector('.'+c);return el?el.value.trim():'';};
+    return {...(old[r.dataset.id]||{}),id:r.dataset.id,cantiere:g('om-cant'),lavori:g('om-lav'),produttore:g('om-prod'),produttorePiva:g('om-piva'),rentri:g('om-rentri'),
+      formatoFir:g('om-fir'),rapportoProva:g('om-rapp'),dataRapporto:g('om-rappdata'),laboratorio:g('om-lab'),validoFino:g('om-valido')||(g('om-rappdata')?raAddMonthsIso(g('om-rappdata'),24):''),
+      qtaStimata:g('om-qta')===''?'':num(g('om-qta')),dataAccettazione:g('om-acc'),trasporti:g('om-trasp')};
+  }).filter(o=>o.cantiere||o.produttore||o.rapportoProva);
+}
+function raAntFormCalc(){
+  const v=i=>{const el=document.getElementById(i);return el?el.value:'';};
+  const tipo=v('ran-anttipo');const w=document.getElementById('ran-antval-wrap');if(w)w.style.display=tipo==='iva'?'none':'';
+  const lab=document.getElementById('ran-antval-lab');if(lab)lab.textContent=tipo==='perc'?'Percentuale del totale (%)':'Importo anticipo (€)';
+  const k=raAntCalc({quantitaMax:v('ran-qta'),prezzoT:v('ran-prezzo'),aliquotaIva:v('ran-iva'),anticipoTipo:tipo,anticipoValore:v('ran-antval')});
+  const box=document.getElementById('ran-calc');if(!box)return;
+  box.innerHTML=`<div class="r"><span>Imponibile (${qty(k.Q)} t × € ${eur(k.P)})</span><span>€ ${eur(k.imp)}</span></div>
+    <div class="r"><span>IVA ${qty(k.A)}%</span><span>€ ${eur(k.iva)}</span></div>
+    <div class="r grand"><span>Fattura alla firma</span><span>€ ${eur(k.tot)}</span></div>
+    <div class="r"><span>Anticipo alla firma</span><span>€ ${eur(k.ant)}</span></div>
+    <div class="r"><span>Da pagare in rate mensili</span><span>€ ${eur(k.saldo)}</span></div>
+    <div class="r grand"><span>Rata per tonnellata</span><span>€ ${eur(k.unit)}</span></div>`;
+}
+function openContrattoRAAnt(id){
+  const rec=id?S.contrattiRA.find(s=>s.id===id):null;
+  const x=rec?{...RA_ANT_DEF,...rec}:raAntNuovo();
+  raFiles=(x.allegati||[]).map(a=>({...a}));
+  const cliOpts=`<option value="">— scegli dall'anagrafica clienti —</option>`+S.clienti.filter(c=>!c.isAzienda).map(c=>`<option value="${c.id}" ${x.clienteId===c.id?'selected':''}>${esc(c.ragioneSociale)}</option>`).join('');
+  const om=(x.omologhe||[]).map(o=>raOmRow(o)).join('')||`<div class="sub ra-om-empty" style="margin-bottom:8px">Nessun cantiere: puoi aggiungerli anche dopo la firma, prima del primo carico.</div>`;
+  const body=`
+    <div class="note">${svg(IC.contract)}<div><b>Contratto con anticipo.</b> Alla firma si fattura l'intero quantitativo; il cliente versa l'anticipo e poi paga ogni mese le tonnellate dei formulari. Tutti gli importi sono modificabili.</div></div>
+    <div class="form-grid">
+      <div class="field"><label>Data (Roma, lì)</label><input id="ran-data" type="date" value="${x.data||''}"></div>
+      <div class="field"><label>Contratto n°</label><input id="ran-numero" type="number" value="${esc(x.numero||'')}"><span class="hint">Stessa numerazione dei contratti R.A.</span></div>
+      <div class="field"><label>Anno</label><input id="ran-anno" type="number" value="${esc(x.anno||new Date().getFullYear())}"></div>
+      <div class="field"><label>Pagine n°</label><input id="ran-pagine" value="${esc(x.pagine||'')}" placeholder="automatico"></div>
+
+      <div class="section-label">Cliente (conferitore)</div>
+      <div class="field col2"><label>Cliente <span class="req">*</span></label><div class="with-add"><select id="ran-cliente" data-ent="clienti">${cliOpts}</select>${qaBtn("quickAddInto('clienti','ran-cliente')")}</div>
+        <span class="hint">L'anagrafica completa (sede, C.F., P.IVA, codice univoco, PEC, e-mail, telefono) viene presa dall'anagrafica clienti al momento della stampa.</span></div>
+      <div class="field"><label>Firmatario Cava (nome e qualifica)</label><input id="ran-firmacava" value="${esc(x.firmaCava||'')}" placeholder="Es. Mario Rossi, amministratore"></div>
+      <div class="field"><label>Firmatario cliente (nome e qualifica)</label><input id="ran-firmacli" value="${esc(x.firmaCliente||'')}" placeholder="Legale rappresentante"></div>
+
+      <div class="section-label">Rifiuto, prezzo e quantitativo</div>
+      <div class="field"><label>Codice E.E.R.</label><input id="ran-cer" value="${esc(x.codiceCer||'')}"></div>
+      <div class="field"><label>Definizione dei materiali</label><input id="ran-cerdesc" value="${esc(x.descrizioneCer||'')}"></div>
+      <div class="field"><label>Prezzo € / t (oltre IVA) <span class="req">*</span></label><input id="ran-prezzo" type="number" step="any" value="${x.prezzoT!=null&&x.prezzoT!==''?x.prezzoT:''}" oninput="raAntFormCalc()"></div>
+      <div class="field"><label>Aliquota IVA %</label><input id="ran-iva" type="number" step="any" value="${x.aliquotaIva!=null&&x.aliquotaIva!==''?x.aliquotaIva:22}" oninput="raAntFormCalc()"></div>
+      <div class="field"><label>Quantitativo massimo (t) <span class="req">*</span></label><input id="ran-qta" type="number" step="any" value="${x.quantitaMax!=null&&x.quantitaMax!==''?x.quantitaMax:''}" oninput="raAntFormCalc()"></div>
+      <div class="field"><label>Anticipo alla firma</label><select id="ran-anttipo" onchange="raAntFormCalc()">
+        <option value="iva" ${x.anticipoTipo==='iva'||!x.anticipoTipo?'selected':''}>Pari all'IVA della fattura</option>
+        <option value="importo" ${x.anticipoTipo==='importo'?'selected':''}>Importo fisso</option>
+        <option value="perc" ${x.anticipoTipo==='perc'?'selected':''}>Percentuale del totale (IVA inclusa)</option></select></div>
+      <div class="field" id="ran-antval-wrap"><label id="ran-antval-lab">Importo anticipo (€)</label><input id="ran-antval" type="number" step="any" value="${x.anticipoValore!=null?x.anticipoValore:''}" oninput="raAntFormCalc()"></div>
+      <div class="field col2"><div class="totbox" id="ran-calc"></div></div>
+
+      <div class="section-label">Pagamenti, rendiconto e durata</div>
+      <div class="field"><label>Rate: giorni dalla fine del mese</label><input id="ran-gg" type="number" value="${esc(x.giorniPag)}"></div>
+      <div class="field"><label>Rendiconto: invio entro il giorno</label><input id="ran-rendg" type="number" value="${esc(x.rendGiorno)}"></div>
+      <div class="field"><label>Rendiconto: giorni per contestare</label><input id="ran-rendc" type="number" value="${esc(x.rendContest)}"></div>
+      <div class="field"><label>Chiusura dopo mesi senza scarichi</label><input id="ran-inatt" type="number" value="${esc(x.mesiInattivita)}"></div>
+
+      <div class="section-label">Cantieri — schede di omologa (Allegato A)</div>
+      <div class="field col2"><div id="ran-om">${om}</div>
+        <button type="button" class="btn sm" onclick="raOmAdd()">${svg(IC.plus,1.9)} Aggiungi cantiere</button>
+        <span class="hint">Le analisi valgono 24 mesi dalla data del rapporto di prova (art. 8 D.M. 5/2/1998), salvo modifiche del processo.</span></div>
+
+      <div class="section-label">Altro</div>
+      <div class="field col2"><label>Pattuizioni aggiuntive (stampate prima delle firme)</label><textarea id="ran-note" rows="3">${esc(x.note||'')}</textarea></div>
+      <div class="field col2">
+        <label class="btn sm" style="width:fit-content">${svg(IC.clip)} Aggiungi file<input type="file" multiple style="display:none" onchange="raAddFiles(this)"></label>
+        <div id="ra-att" class="att-list"></div></div>
+    </div>`;
+  openModal(`${rec?'Modifica':'Nuovo'} contratto R.A. con anticipo`,body,()=>{
+    const v=i=>{const el=document.getElementById(i);return el?el.value.trim():'';};
+    const clienteId=v('ran-cliente');const cli=clienteById(clienteId);
+    if(!cli){toast('Scegli il cliente');return false;}
+    const prezzoT=num(v('ran-prezzo')),quantitaMax=num(v('ran-qta'));
+    if(!(prezzoT>0)){toast('Inserisci il prezzo per tonnellata');return false;}
+    if(!(quantitaMax>0)){toast('Inserisci il quantitativo massimo');return false;}
+    const anticipoTipo=v('ran-anttipo')||'iva',anticipoValore=anticipoTipo==='iva'?'':(v('ran-antval')===''?'':num(v('ran-antval')));
+    if(anticipoTipo!=='iva'&&!(num(anticipoValore)>0)){toast('Inserisci l\'importo o la percentuale dell\'anticipo');return false;}
+    if(anticipoTipo==='perc'&&num(anticipoValore)>100){toast('La percentuale non può superare 100');return false;}
+    const omologhe=raOmRead(x.omologhe);
+    if(omologhe.some(o=>!o.cantiere)){toast('Indica il cantiere per ogni omologa');return false;}
+    const prevIds=new Set(omologhe.map(o=>o.id));
+    const persi=(x.omologhe||[]).filter(o=>!prevIds.has(o.id)&&(S.conferimenti||[]).some(c=>c.omologaId===o.id));
+    if(persi.length){toast('Un cantiere tolto è usato nei formulari: non si può togliere');return false;}
+    const data={...x,id:x.id||uid(),tipo:'anticipo',
+      data:v('ran-data')||today(),numero:num(v('ran-numero'))||v('ran-numero'),anno:parseInt(v('ran-anno'))||yearOf(v('ran-data')),pagine:v('ran-pagine'),
+      clienteId,ditta:cli.ragioneSociale||'',firmaCava:v('ran-firmacava'),firmaCliente:v('ran-firmacli'),
+      codiceCer:v('ran-cer'),descrizioneCer:v('ran-cerdesc'),prezzoT,aliquotaIva:v('ran-iva')===''?22:num(v('ran-iva')),quantitaMax,anticipoTipo,anticipoValore,
+      giorniPag:num(v('ran-gg'))||60,rendGiorno:num(v('ran-rendg'))||5,rendContest:num(v('ran-rendc'))||8,mesiInattivita:num(v('ran-inatt'))||12,
+      note:v('ran-note'),allegati:raFiles.map(f=>({...f}))};
+    const nn=raNum(data);let seq=Math.max(0,...(x.omologhe||[]).map(o=>num(o.seq)));
+    data.omologhe=omologhe.map(o=>{if(!o.seq){seq++;o.seq=seq;}o.numero=nn+'-'+String(o.seq).padStart(2,'0');return o;});
+    // campi comuni, per elenco, ricerca e registro dei contratti R.A.
+    Object.assign(data,{prezzo:prezzoT,umPrezzo:'Tonnellate',prezzi:[{um:'Tonnellate',prezzo:prezzoT}],quantita:quantitaMax,umQuantita:'Tonnellate',
+      pagamento:'Anticipo alla firma + rate mensili',cantiere:data.omologhe.map(o=>o.cantiere).filter(Boolean).join(' · '),
+      produttore:[...new Set(data.omologhe.map(o=>o.produttore).filter(Boolean))].join(' · ')});
+    const fatt=raAntFattura(x);
+    if(rec&&fatt){const a=raAntCalc(rec),b=raAntCalc(data);if(a.tot!==b.tot)setTimeout(()=>toast('Attenzione: il totale è cambiato ma la fattura alla firma n. '+fatt.numero+'/'+fatt.anno+' è già creata: verificala'),400);}
+    if(rec){const i=S.contrattiRA.findIndex(s=>s.id===rec.id);S.contrattiRA[i]=data;}else S.contrattiRA.push(data);
+    commitNumber('contrattoRA',data.anno,parseInt(data.numero)||0);
+    logAction(rec?'Contratto R.A. con anticipo modificato':'Contratto R.A. con anticipo creato',raNum(data)+' · '+(data.ditta||''));
+    persist();render();toast('Contratto salvato');return true;
+  },{wide:true,submitLabel:'Salva contratto'});
+  raAttList();raAntFormCalc();
+}
+
+/* ---- Scheda del contratto: contatori, rate, cantieri, azioni ---- */
+function raAntScheda(id){
+  const x=S.contrattiRA.find(s=>s.id===id);if(!raIsAnt(x))return;
+  const st=raAntStato(x),k=st.k,f=raAntFattura(x),t=today();
+  const pct=k.Q>0?Math.min(100,st.tConf/k.Q*100):0;
+  const stat=(lab,val,sub)=>`<div class="stat"><div class="k">${lab}</div><div class="v" style="font-size:18px">${val}</div>${sub?`<div class="stat-sub">${sub}</div>`:''}</div>`;
+  const btn=(lab,fn,cls)=>`<button type="button" class="btn sm ${cls||''}" onclick="${fn}">${lab}</button>`;
+  const perOm={};raAntConf(x).forEach(c=>{const o=c.omologaId||'';(perOm[o]=perOm[o]||{n:0,t:0});perOm[o].n++;perOm[o].t+=confTonnellate(c);});
+  const chiuso=x.stato==='chiuso';
+  const body=`
+    ${chiuso?`<div class="note">${svg(IC.shield)}<div><b>Contratto chiuso</b> il ${dmy((x.chiusura||{}).data)}${(x.chiusura||{}).motivo?' — '+esc(RA_MOTIVI[(x.chiusura||{}).motivo]||x.chiusura.motivo):''}.</div></div>`:''}
+    ${st.avvisi.map(a=>`<div class="note" style="${a.cls==='danger'?'border-color:var(--danger)':''}"><span class="pill ${a.cls}">${a.cls==='ok'?'OK':(a.cls==='danger'?'Attenzione':'Avviso')}</span><div>${esc(a.txt)}</div></div>`).join('')}
+    <div class="stat-grid" style="grid-template-columns:repeat(4,1fr)">
+      ${stat('Tonnellate conferite',qty(st.tConf)+' t',`su ${qty(k.Q)} t · ${Math.floor(pct)}% · restano ${qty(st.tRes)} t`)}
+      ${stat('Fattura alla firma','€ '+eur(k.tot),f?`n. ${esc(f.numero)}/${esc(f.anno)} del ${dmy(f.data)}`:'da creare')}
+      ${stat('Incassato','€ '+eur(st.incassato),`anticipo ${st.antInc?'incassato':'da incassare'} · rate pagate € ${eur(st.ratePag)}`)}
+      ${stat('Residuo fattura','€ '+eur(st.residuoFatt),`non ancora maturato · rata € ${eur(k.unit)}/t`)}
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin:10px 0">
+      ${btn(svg(IC.print,1.9)+' Stampa contratto',`closeModal();printContrattoRA('${x.id}')`)}
+      ${btn(svg(IC.invoice,1.9)+(f?' Apri fattura':' Crea fattura alla firma'),`closeModal();raAntFatturaFirma('${x.id}')`,f?'':'primary')}
+      ${btn(st.antInc?'Anticipo incassato il '+dmy(x.anticipoIncassato.data)+' ✓':'Segna anticipo incassato',`raAntToggleAnticipo('${x.id}');raAntScheda('${x.id}')`)}
+      ${chiuso?'':btn(svg(IC.plus,1.9)+' Registra formulario',`closeModal();setTimeout(()=>openConferimento(null,{raId:'${x.id}'}),0)`)}
+      ${btn(svg(IC.doc,1.9)+' Rendiconto mensile',`raAntRendicontoScegli('${x.id}')`)}
+      ${chiuso?btn('Riapri contratto',`raAntRiapri('${x.id}')`):btn('Conteggio di chiusura',`raAntChiudiDialog('${x.id}')`)}
+    </div>
+    <div class="section-label">Rate mensili (dai formulari)</div>
+    ${st.mesi.length?`<table><thead><tr><th>Mese</th><th class="num">Formulari</th><th class="num">Tonnellate</th><th class="num">Rata</th><th>Scadenza</th><th></th></tr></thead><tbody>
+      ${st.mesi.map(r=>`<tr><td>${esc(raMeseLab(r.m))}</td><td class="num">${r.n}</td><td class="num">${qty(r.t)}${r.oltre>0?` <span class="pill danger">${qty(r.oltre)} t oltre</span>`:''}</td><td class="num strong">€ ${eur(r.rata)}</td>
+        <td>${r.scad?dmy(r.scad):'—'}${!r.pagata&&r.rata>0&&r.scad&&r.scad<t?' <span class="pill danger">scaduta</span>':''}</td>
+        <td class="actions">${r.rata>0?(r.pagata?`<span class="pill ok">Pagata ${dmy(r.dataPag)}</span> <button class="linklike" onclick="raAntToggleRata('${x.id}|${r.m}');raAntScheda('${x.id}')">annulla</button>`:btn('Segna pagata',`raAntToggleRata('${x.id}|${r.m}');raAntScheda('${x.id}')`)):''}</td></tr>`).join('')}
+      </tbody></table>`:`<div class="sub">Nessun formulario registrato per questo contratto.</div>`}
+    <div class="section-label" style="margin-top:12px">Cantieri (omologhe)</div>
+    ${(x.omologhe||[]).length?`<table><thead><tr><th>Omologa</th><th>Cantiere</th><th>Produttore</th><th>Analisi valide fino al</th><th class="num">Formulari</th><th class="num">t</th></tr></thead><tbody>
+      ${x.omologhe.map(o=>{const g=o.validoFino?raGiorni(t,o.validoFino):null;const p=perOm[o.id]||{n:0,t:0};
+        return `<tr><td class="strong">${esc(o.numero||'')}</td><td>${esc(o.cantiere||'')}</td><td class="sub">${esc(o.produttore||'—')}</td>
+        <td>${o.validoFino?`<span class="pill ${g<0?'danger':(g<=30?'warn':'ok')}">${dmy(o.validoFino)}</span>`:'<span class="sub">—</span>'}</td><td class="num">${p.n}</td><td class="num">${qty(raR3(p.t))}</td></tr>`;}).join('')}
+      </tbody></table>`:`<div class="sub">Nessun cantiere: aggiungilo con «Modifica» prima del primo carico.</div>`}`;
+  openModal(`Contratto R.A. con anticipo ${raNum(x)} · ${x.ditta||''}`,body,()=>true,{wide:true,submitLabel:'Chiudi'});
+}
+function raAntToggleAnticipo(id){const x=S.contrattiRA.find(s=>s.id===id);if(!x)return;
+  x.anticipoIncassato=x.anticipoIncassato?'':{data:today(),importo:raAntCalc(x).ant};
+  logAction('Contratto R.A. '+raNum(x),x.anticipoIncassato?'anticipo segnato come incassato':'anticipo segnato da incassare');
+  persist();render();toast(x.anticipoIncassato?'Anticipo incassato':'Anticipo da incassare');}
+function raAntToggleRata(key){const [id,m]=String(key).split('|');const x=S.contrattiRA.find(s=>s.id===id);if(!x||!m)return;
+  x.ratePagate=x.ratePagate||{};
+  if(x.ratePagate[m])delete x.ratePagate[m];else x.ratePagate[m]={data:today()};
+  logAction('Contratto R.A. '+raNum(x),'rata '+raMeseLab(m)+(x.ratePagate[m]?' pagata':' da pagare'));
+  persist();render();toast(x.ratePagate[m]?'Rata segnata come pagata':'Rata da pagare');}
+function raAntToggleRest(id){const x=S.contrattiRA.find(s=>s.id===id);if(!x||!x.chiusura)return;
+  x.chiusura.restituito=x.chiusura.restituito?'':today();persist();render();toast(x.chiusura.restituito?'Restituzione registrata':'Restituzione da fare');}
+
+/* ---- Fattura alla firma (fattura interna precompilata, collegata al contratto) ---- */
+function raAntFatturaFirma(id){
+  const x=S.contrattiRA.find(s=>s.id===id);if(!x)return;
+  const f=raAntFattura(x);if(f){printFattura(f.id);return;}
+  const k=raAntCalc(x),nn=raNum(x);
+  const pag=(S.modalitaPagamento.find(p=>/bonifico/i.test(p.nome))||{}).nome||'';
+  openFatturaForm(null,{__raLink:x.id,clienteId:x.clienteId,data:today(),modalitaPagamento:pag,scadenza:x.data||today(),
+    causaleManuale:`Contratto con anticipo n. ${nn} del ${dmy(x.data)}`,
+    righe:[{descrizione:`Conferimento terre e rocce da scavo E.E.R. ${x.codiceCer||'17 05 04'} per recupero ambientale R10 — contratto con anticipo n. ${nn} del ${dmy(x.data)} — quantitativo massimo ${qty(k.Q)} t`,
+      um:'Tonnellate',quantita:k.Q,prezzoUnitario:k.P,aliquotaIva:k.A,descManuale:true}],
+    note:`Pagamento come da contratto n. ${nn}: anticipo di € ${eur(k.ant)} alla firma; saldo di € ${eur(k.saldo)} in rate mensili pari alle tonnellate conferite nel mese × € ${eur(k.unit)}, con bonifico a ${num(x.giorniPag)||60} giorni dalla fine del mese di conferimento.`});
+  ['f-pag','f-scad'].forEach(i=>{const el=document.getElementById(i);if(el)el.dataset.touched='1';});
+}
+
+/* ---- Chiusura ---- */
+const RA_MOTIVI={quantita:'quantitativo massimo raggiunto',inattivita:'mesi senza scarichi (art. 3)',risoluzione:'risoluzione (art. 11)',altro:'altro motivo'};
+function raAntChiudiDialog(id){
+  const x=S.contrattiRA.find(s=>s.id===id);if(!x)return;
+  const st=raAntStato(x),c=raAntChiusuraCalc(x,st),f=raAntFattura(x);
+  const motivoDef=st.tRes<=0?'quantita':(st.chiusuraInatt&&st.chiusuraInatt<=today()?'inattivita':'risoluzione');
+  const body=`<div class="note">${svg(IC.invoice)}<div>Conteggio finale (art. 9). La nota di credito va emessa sulla fattura alla firma${f?` n. ${esc(f.numero)}/${esc(f.anno)}`:''}; la restituzione dell'anticipo entro 60 giorni comparirà nello scadenzario.</div></div>
+    <div class="form-grid">
+      <div class="field"><label>Data di chiusura</label><input id="rac-data" type="date" value="${today()}"></div>
+      <div class="field"><label>Motivo</label><select id="rac-motivo">${Object.entries(RA_MOTIVI).map(([k2,l])=>`<option value="${k2}" ${k2===motivoDef?'selected':''}>${esc(l)}</option>`).join('')}</select></div>
+      <div class="field col2"><div class="totbox">
+        <div class="r"><span>Tonnellate conferite</span><span>${qty(st.tConf)} t su ${qty(st.k.Q)} t</span></div>
+        <div class="r"><span>Tonnellate non conferite</span><span>${qty(c.tNon)} t</span></div>
+        <div class="r"><span>Nota di credito: imponibile</span><span>€ ${eur(c.ncImp)}</span></div>
+        <div class="r"><span>Nota di credito: IVA ${qty(st.k.A)}%</span><span>€ ${eur(c.ncIva)}</span></div>
+        <div class="r grand"><span>Nota di credito totale</span><span>€ ${eur(c.nc)}</span></div>
+        <div class="r grand"><span>Anticipo da restituire</span><span>€ ${eur(c.rest)}</span></div>
+      </div><span class="hint">Restituzione = anticipo × tonnellate non conferite ÷ quantitativo massimo. Se ci sono rate non pagate, vanno compensate.</span></div>
+    </div>`;
+  openModal('Conteggio di chiusura · contratto '+raNum(x),body,()=>{
+    const data=document.getElementById('rac-data').value||today();
+    x.stato='chiuso';x.chiusura={data,motivo:document.getElementById('rac-motivo').value,tConf:st.tConf,...c,scadRest:c.rest>0?raAddDaysIso(data,60):'',restituito:''};
+    logAction('Contratto R.A. '+raNum(x)+' chiuso',`${qty(st.tConf)} t · nota di credito € ${eur(c.nc)} · restituzione € ${eur(c.rest)}`);
+    persist();render();toast('Contratto chiuso');return true;
+  },{wide:true,submitLabel:'Chiudi il contratto'});
+}
+function raAntRiapri(id){const x=S.contrattiRA.find(s=>s.id===id);if(!x)return;
+  confirmDialog('Riaprire il contratto?','Il conteggio di chiusura verrà annullato.',()=>{x.stato='';x.chiusura=null;persist();render();toast('Contratto riaperto');},'Riapri');}
+
+/* ---- Rendiconto mensile per cantiere (strumento interno, dai formulari del registro) ---- */
+function raAntRendicontoScegli(id){
+  const x=S.contrattiRA.find(s=>s.id===id);if(!x)return;
+  const mesi=raAntMesi(x).map(r=>r.m);const cur=today().slice(0,7);
+  const prev=(()=>{const [y,m]=cur.split('-').map(Number);return m===1?(y-1)+'-12':y+'-'+String(m-1).padStart(2,'0');})();
+  const opts=[...new Set([...mesi,prev,cur])].sort().reverse();
+  const def=mesi.includes(prev)?prev:(mesi[mesi.length-1]||prev);
+  openModal('Rendiconto mensile · contratto '+raNum(x),`<div class="note">${svg(IC.doc)}<div>Il rendiconto si compila da solo con i formulari del mese registrati nel Registro conferimenti per questo contratto, divisi per cantiere.</div></div>
+    <div class="form-grid"><div class="field col2"><label>Mese</label><select id="rar-mese">${opts.map(m=>`<option value="${m}" ${m===def?'selected':''}>${esc(raMeseLab(m))}${mesi.includes(m)?'':' (nessun formulario)'}</option>`).join('')}</select></div></div>`,
+    ()=>{raAntRendiconto(id,document.getElementById('rar-mese').value);return true;},{submitLabel:'Apri rendiconto'});
+}
+function raAntRendiconto(id,m){
+  const x=S.contrattiRA.find(s=>s.id===id);if(!x)return;
+  const st=raAntStato(x),k=st.k,r=st.mesi.find(q=>q.m===m),f=raAntFattura(x),cli=clienteById(x.clienteId)||{};
+  const items=r?r.items:[];const idx=r?st.mesi.indexOf(r)+1:'—';
+  const oms=[...(x.omologhe||[]),{id:'',numero:'—',cantiere:'Senza omologa'}];
+  const gruppi=oms.map(o=>({o,items:items.filter(c=>(c.omologaId||'')===o.id)})).filter(g=>g.items.length);
+  const tot=raR3(items.reduce((s,c)=>s+confTonnellate(c),0));
+  const prog=r?r.cum:raR3(st.mesi.filter(q=>q.m<m).reduce((s,q)=>s+q.tEff,0));
+  const rata=r?r.rata:0,scad=r?r.scad:raAddDaysIso(raEndOfMonth(m),num(x.giorniPag)||60);
+  const rateFino=round2(st.mesi.filter(q=>q.m<=m).reduce((s,q)=>s+q.rata,0));
+  const residuo=Math.max(0,round2(k.saldo-rateFino));
+  const html=`<div class="doc ra">
+    <div class="hdr">${coHeader()}</div>
+    <div class="ra-title">RENDICONTO MENSILE DEI CONFERIMENTI</div>
+    <div class="ra-sub">Rendiconto n° ${esc(idx)} — mese di ${esc(raMeseLab(m))} — Contratto con anticipo n° ${esc(raNum(x))} del ${dmy(x.data)}${f?` — Fattura n° ${esc(f.numero)}/${esc(f.anno)} del ${dmy(f.data)}`:''}</div>
+    <div class="ra-box"><div class="ra-lab">SPETT.LE</div><div class="ra-row"><b>${esc(cli.ragioneSociale||x.ditta||'')}</b></div>
+      <div class="ra-row">${esc([cli.indirizzo,[String(cli.cap||'').trim(),cli.citta,cli.provincia?'('+cli.provincia+')':''].filter(Boolean).join(' ')].filter(Boolean).join(', '))}</div></div>
+    <div class="ra-h2">Riepilogo per cantiere</div>
+    <table class="ra-tab"><thead><tr><th>Cantiere (omologa)</th><th style="text-align:right">Formulari</th><th style="text-align:right">Tonnellate</th><th style="text-align:right">Importo rata €</th></tr></thead><tbody>
+      ${gruppi.length?gruppi.map(g=>{const tt=raR3(g.items.reduce((s,c)=>s+confTonnellate(c),0));return `<tr><td>${esc(g.o.numero)} — ${esc(g.o.cantiere||'')}</td><td style="text-align:right">${g.items.length}</td><td style="text-align:right">${qty(tt)}</td><td style="text-align:right">${eur(round2(tt*k.unit))}</td></tr>`;}).join(''):`<tr><td colspan="4">Nessun conferimento nel mese.</td></tr>`}
+      <tr><td><b>Totale del mese</b></td><td style="text-align:right"><b>${items.length}</b></td><td style="text-align:right"><b>${qty(tot)}</b></td><td style="text-align:right"><b>${eur(rata)}</b></td></tr></tbody></table>
+    <table class="ra-tab"><tbody>
+      <tr><td>Tonnellate conferite dall'inizio</td><td style="text-align:right">${qty(prog)} t</td></tr>
+      <tr><td>Tonnellate residue</td><td style="text-align:right">${qty(Math.max(0,raR3(k.Q-prog)))} t</td></tr>
+      <tr><td><b>Rata da pagare</b></td><td style="text-align:right"><b>€ ${eur(rata)}</b>${rata>0?` entro il ${dmy(scad)}`:''}</td></tr>
+      <tr><td>Residuo della fattura dopo questa rata</td><td style="text-align:right">€ ${eur(residuo)}</td></tr></tbody></table>
+    ${r&&r.oltre>0?`<p class="ra-p"><b>Attenzione:</b> ${qty(r.oltre)} t del mese superano il quantitativo massimo del contratto.</p>`:''}
+    ${gruppi.map(g=>`<div class="ra-h2">Dettaglio formulari — ${esc(g.o.numero)} ${esc(g.o.cantiere||'')}</div>
+      <table class="ra-tab"><thead><tr><th>FIR n°</th><th>Data</th><th>Trasportatore</th><th>Targa</th><th style="text-align:right">Peso netto a destino t</th></tr></thead><tbody>
+      ${g.items.map(c=>`<tr><td>${esc(c.fir||'')}</td><td>${dmy(c.data)}</td><td>${esc(c.trasportatore||'')}</td><td>${esc(c.targa||'')}</td><td style="text-align:right">${qty(raR3(confTonnellate(c)))}</td></tr>`).join('')}</tbody></table>`).join('')}
+    <p class="ra-p">Rata da pagare con bonifico a ${num(x.giorniPag)||60} giorni dalla fine del mese, sul conto intestato a Cava Basalto Laghetto S.r.l.${(S.azienda||{}).iban?', IBAN '+esc(S.azienda.iban):''}. Eventuali contestazioni vanno fatte per iscritto entro ${num(x.rendContest)||8} giorni dal ricevimento (art. 8.3 del contratto).</p>
+    <div class="ra-pie">${esc(RA_DEF.piePagina)} · Rendiconto contratto con anticipo n° ${esc(raNum(x))}</div>
+  </div>`;
+  openPreview({type:'rendicontoRA',id,doc:x,title:`Rendiconto ${raMeseLab(m)} · contratto ${raNum(x)}`,filename:`Rendiconto_${String(raNum(x)).replace(/\W+/g,'-')}_${m}`,
+    email:{to:cli.pec||cli.email||'',subject:`Rendiconto conferimenti ${raMeseLab(m)} — contratto n. ${raNum(x)}`,
+      body:`Buongiorno,\nin allegato il rendiconto dei conferimenti di ${raMeseLab(m)} relativo al contratto n. ${raNum(x)}.\nRata da pagare: € ${eur(rata)}${rata>0?' entro il '+dmy(scad):''}.\n\nCava Basalto Laghetto srl`}},html);
+}
+
+/* ---- Stampa del contratto con anticipo ---- */
+function raAntDatiMancanti(x){
+  const c=clienteById(x.clienteId),a=S.azienda||{},m=[];
+  if(!c)m.push('il cliente');
+  else [['indirizzo','indirizzo'],['pec','PEC'],['email','e-mail'],['telefono','telefono']].forEach(([k2,l])=>{if(!String(c[k2]||'').trim())m.push(l+' del cliente');});
+  if(c&&!String(c.partitaIva||c.codiceFiscale||'').trim())m.push('P.IVA o codice fiscale del cliente');
+  if(!String(a.iban||'').trim())m.push('IBAN di Cava (dati azienda)');
+  return m;
+}
+function printContrattoRAAnt(id,force){
+  const x=S.contrattiRA.find(s=>s.id===id);if(!x)return;
+  const manca=raAntDatiMancanti(x);
+  if(manca.length&&!force){confirmDialog('Dati mancanti in anagrafica','Mancano: '+manca.join(', ')+'. Nella stampa resteranno vuoti. Vuoi stampare comunque?',()=>setTimeout(()=>printContrattoRAAnt(id,true),0),'Stampa comunque');return;}
+  const k=raAntCalc(x),a=S.azienda||{},c=clienteById(x.clienteId)||{},nn=raNum(x);
+  const e=v=>esc(v==null?'':v), vuoto=v=>String(v||'').trim()?esc(v):'<span class="ra-fill" style="min-width:120px"></span>';
+  const mesiIn=num(x.mesiInattivita)||12,gg=num(x.giorniPag)||60,rg=num(x.rendGiorno)||5,rc=num(x.rendContest)||8;
+  const piva=String(c.partitaIva||'').replace(/^IT/i,'');
+  const sedeCli=[c.indirizzo,[String(c.cap||'').trim(),c.citta,c.provincia?'('+c.provincia+')':''].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+  const tEs=k.Q>=1000?1000:k.Q, tChiusa=raR3(k.Q*0.7), es=raAntChiusuraCalc(x,{k,tConf:tChiusa});
+  const li=arr=>`<ol class="ra-ol">${arr.map(t=>`<li>${t}</li>`).join('')}</ol>`;
+  const art=(n,tit)=>`<div class="ra-h2">Art. ${n} — ${tit}</div>`;
+  const riga=(l,v1,v2)=>`<tr><td style="width:24%;color:#555">${l}</td><td>${v1}</td><td>${v2}</td></tr>`;
+  const schede=(x.omologhe&&x.omologhe.length?x.omologhe:[{}]).map(o=>`
+    <table class="ra-tab" style="margin-bottom:14px"><tbody>
+      ${[['Omologa n°',o.numero],['Cantiere sito in',o.cantiere],['Lavori / committente',o.lavori],['Produttore del rifiuto',[o.produttore,o.produttorePiva?'P.IVA '+o.produttorePiva:'',o.rentri?('iscritto al RENTRI: '+(o.rentri==='si'?'sì':'no')):''].filter(Boolean).join(' — ')],
+         ['Codice E.E.R.',x.codiceCer],['Analisi: rapporto di prova n°',[o.rapportoProva,o.dataRapporto?'del '+dmy(o.dataRapporto):''].filter(Boolean).join(' ')],['Laboratorio',o.laboratorio],
+         ['Esito','Test di cessione (All. 3 D.M. 5/2/1998) e analisi chimiche conformi'],['Analisi valide fino al',o.validoFino?dmy(o.validoFino):''],
+         ['Quantità stimata',o.qtaStimata!==''&&o.qtaStimata!=null?qty(o.qtaStimata)+' t':''],['Trasportatori e automezzi',o.trasporti],
+         ['Formulario',o.formatoFir==='xFIR'?'xFIR digitale':(o.formatoFir==='cartaceo'?'cartaceo D.M. 59/2023':'')],['Allegati','Rapporto di prova; elenco automezzi'],
+         ['Accettazione del Gestore',(o.dataAccettazione?'Data '+dmy(o.dataAccettazione):'Data ………………')+' — firma Cava Basalto Laghetto S.r.l.'],['Firma del Conferitore','']]
+        .map(([l,v])=>`<tr><td style="width:32%;color:#555">${l}</td><td>${vuoto(v)}</td></tr>`).join('')}
+    </tbody></table>`).join('');
+  const html=`<div class="doc ra">
+    <div class="hdr">${coHeader()}</div>
+    <div class="ra-top"><div>Roma, lì ${raLinea(x.data?dmy(x.data):'',150)}</div>
+      <div>Contratto n° ${raLinea(nn,110)} · Pagine n° <span class="ra-fill" id="ra-pagine-val" style="min-width:40px">${e(x.pagine||x.pagineCalc||'')}</span></div></div>
+    <div class="ra-title">CONTRATTO CON ANTICIPO PER IL CONFERIMENTO DI TERRE E ROCCE DA SCAVO</div>
+    <div class="ra-sub">EER ${e(x.codiceCer)} — diverse da quelle di cui alla voce 17.05.03 — D.M. 5/2/1998 e s.m.i., punto 7.31 bis — Recupero ambientale R10</div>
+    <table class="ra-tab"><thead><tr><th></th><th>Gestore dell'impianto</th><th>Conferitore</th></tr></thead><tbody>
+      ${riga('Ragione sociale','Cava Basalto Laghetto S.r.l.',vuoto(c.ragioneSociale||x.ditta))}
+      ${riga('Sede legale',vuoto(a.sedeLegale),vuoto(sedeCli))}
+      ${riga('Impianto di recupero',vuoto(a.stabilimento),'—')}
+      ${riga('Codice fiscale',vuoto(a.codiceFiscale),vuoto(c.codiceFiscale))}
+      ${riga('Partita IVA',vuoto(a.partitaIva),vuoto(piva))}
+      ${riga('Codice univoco SDI','—',vuoto(c.sdi))}
+      ${riga('PEC',vuoto(a.pec),vuoto(c.pec))}
+      ${riga('E-mail',vuoto(a.email),vuoto(c.email))}
+      ${riga('Telefono',vuoto([a.telefono,a.cellulare].filter(Boolean).join(' · ')),vuoto(c.telefono))}
+      ${riga('Iscrizioni',vuoto(a.altro),'')}
+      ${riga('Firmatario',vuoto(x.firmaCava),vuoto(x.firmaCliente))}
+    </tbody></table>
+    <p class="ra-p">Di seguito «il Gestore» e «il Conferitore», insieme «le Parti».</p>
+    <div class="ra-h2">Premesse</div>
+    ${li(["Il Gestore esercita l'attività di recupero ambientale R10 nel sito di Via Casilina Km 22,500, Monte Compatri (RM): comunicazione di inizio attività prot. Provincia di Roma n° 63619 del 19/04/2010; A.U.A. (Autorizzazione Unica Ambientale) R.U. 746 del 28/02/2018.",
+      `Il Conferitore esegue lavori in più cantieri e intende conferire al Gestore le terre e rocce da scavo prodotte, classificate EER ${e(x.codiceCer)}, senza individuare oggi uno specifico cantiere.`,
+      `Le Parti stipulano quindi un contratto con anticipo, in forma di contratto aperto. Il contratto fissa prezzo e quantitativo massimo, senza termine di durata, salvo la chiusura dopo ${mesiIn} mesi senza scarichi. Il corrispettivo è fatturato per intero alla firma; si paga con un anticipo e con rate mensili sulle quantità effettivamente conferite.`,
+      "Ogni cantiere si aggiunge con la scheda di omologa dell'Allegato A, che riporta il rapporto di prova richiesto dall'art. 8 del D.M. 5/2/1998.",
+      "Le premesse e l'Allegato A (scheda di omologa del cantiere) fanno parte integrante del contratto."])}
+    ${art(1,'Oggetto')}
+    <p class="ra-p">Il Gestore riceve a recupero ambientale R10 le terre e rocce da scavo del Conferitore indicate in tabella. Provengono dai cantieri attivati con l'Allegato A (art. 4).</p>
+    <table class="ra-tab"><thead><tr><th style="width:120px">Codice E.E.R.</th><th>Definizione dei materiali</th><th>Operazione</th></tr></thead>
+      <tbody><tr><td>${e(x.codiceCer)}</td><td>${e(x.descrizioneCer)}</td><td>R10 — D.M. 5/2/1998, punto 7.31 bis</td></tr></tbody></table>
+    ${art(2,'Quantitativo massimo')}
+    ${li([`Il quantitativo massimo conferibile è di <b>${qty(k.Q)} tonnellate</b>, per tutti i cantieri insieme.`,
+      "Il peso di ogni carico è quello rilevato dalla pesa dell'impianto e riportato sul formulario. Questo peso fa fede per il conteggio e per i pagamenti.",
+      "Raggiunto il quantitativo massimo, il Gestore non accetta altri carichi. Quantità ulteriori richiedono un atto aggiuntivo scritto.",
+      "Le quantità mensili non sono prestabilite: il Conferitore scarica secondo le esigenze dei suoi cantieri. Per la quantità eventualmente non conferita vale l'art. 9.",
+      "Il Gestore garantisce il ritiro a recupero delle quantità concordate. Fanno eccezione i casi di interruzione dell'attività di recupero e i limiti quantitativi autorizzati dell'impianto."])}
+    ${art(3,'Durata')}
+    ${li(["Il contratto non ha un termine di durata: resta in vigore fino al conferimento del quantitativo massimo.",
+      `Il contratto si chiude comunque se per <b>${mesiIn} mesi consecutivi</b> non ci sono conferimenti. I mesi si contano dall'ultimo scarico o, se non c'è stato alcuno scarico, dalla firma.`,
+      "Il Gestore comunica la chiusura via PEC. Si applica l'art. 9."])}
+    ${art(4,'Attivazione dei cantieri (omologa)')}
+    ${li(["Prima del primo carico da un cantiere, il Conferitore invia al Gestore la scheda di omologa (Allegato A), compilata e firmata.",
+      "Alla scheda va allegato il rapporto di prova sul rifiuto. Deve essere di un laboratorio accreditato ACCREDIA (UNI CEI EN ISO/IEC 17025) e comprendere: a) il test di cessione (Allegato 3 del D.M. 5/2/1998, come modificato dal D.M. 186 del 05/04/2006); b) le analisi chimiche.",
+      "Il cantiere è attivo solo dopo l'accettazione scritta del Gestore, che assegna un numero di omologa. Il numero va riportato su ogni formulario. Il Gestore non accetta carichi da cantieri non attivi.",
+      "A norma dell'art. 8 del D.M. 5/2/1998, le analisi si rifanno ogni 24 mesi. Si rifanno comunque a ogni modifica sostanziale del processo di produzione del rifiuto, per esempio un nuovo fronte di scavo con materiale diverso. Senza analisi valide il cantiere è sospeso."])}
+    ${art(5,'Modalità di conferimento')}
+    <p class="ra-p">Terre e rocce da scavo per il recupero ambientale R10, alle condizioni seguenti:</p>
+    ${li(["Eventuali materiali di risulta trovati nelle terre e rocce non vanno caricati. Restano nell'area di cantiere e il loro smaltimento è a carico del Conferitore.",
+      "La verifica di conformità si fa a ogni conferimento. I materiali difformi da quanto campionato e analizzato non sono accettati.",
+      "Ogni viaggio è accompagnato dal formulario di identificazione del rifiuto (FIR) compilato a norma di legge. Il FIR è digitale (xFIR) tramite RENTRI quando il produttore vi è obbligato. Negli altri casi si usa il modello cartaceo del D.M. 59/2023 vidimato tramite RENTRI.",
+      "Scaricano solo gli automezzi indicati nell'Allegato A. Il trasportatore deve essere iscritto all'Albo Nazionale Gestori Ambientali.",
+      "Il sito è in Via Casilina Km 22,500, «Loc. Laghetto», Monte Compatri (RM), cap 00077. Si raggiunge dal G.R.A., uscita Autostrada Roma-Napoli oppure Casilina."])}
+    ${art(6,'Carichi non conformi')}
+    <p class="ra-p">Il Gestore respinge un carico in questi casi: materiale difforme dalle analisi; presenza di materiali estranei; formulario mancante o incompleto; cantiere non attivo; automezzo non autorizzato. Il respingimento è annotato sul formulario. I costi di ritorno e di gestione del carico respinto sono a carico del Conferitore.</p>
+    ${art(7,'Corrispettivo')}
+    <table class="ra-tab"><thead><tr><th>Codice E.E.R.</th><th>Prezzo</th><th style="text-align:right">Quantità massima</th><th style="text-align:right">Corrispettivo totale</th></tr></thead>
+      <tbody><tr><td>${e(x.codiceCer)}</td><td>€ ${eur(k.P)} / t oltre IVA ${qty(k.A)}%</td><td style="text-align:right">${qty(k.Q)} t</td><td style="text-align:right">€ ${eur(k.imp)} + IVA € ${eur(k.iva)} = <b>€ ${eur(k.tot)}</b></td></tr></tbody></table>
+    <p class="ra-p">Il prezzo resta fisso fino al conferimento dell'intero quantitativo.</p>
+    ${art(8,'Fatturazione e pagamenti')}
+    <p class="ra-p"><b>8.1 Fattura alla firma.</b> Alla sottoscrizione il Gestore fattura l'intero corrispettivo: € ${eur(k.imp)} + IVA ${qty(k.A)}% € ${eur(k.iva)} = € ${eur(k.tot)}. Con la fattura anticipata l'operazione si considera effettuata per l'importo fatturato (art. 6, comma 4, D.P.R. 633/1972). La fattura riporta le modalità di pagamento dei punti seguenti.</p>
+    <p class="ra-p"><b>8.2 Anticipo.</b> Alla firma il Conferitore versa con bonifico un anticipo <b>${e(raAntDescAnticipo(x,k))}</b>. I conferimenti iniziano dopo l'accredito.</p>
+    <p class="ra-p"><b>8.3 Rendiconto mensile per cantiere.</b> Il rendiconto si basa sui formulari (FIR) dei carichi accettati nel mese. Entro il giorno ${rg} del mese successivo il Gestore lo invia via PEC o e-mail. Per ogni cantiere riporta numero e data dei formulari, targhe, peso netto a destino e tonnellate totali. In fondo riporta importo della rata, progressivo e residuo. Se il Conferitore non lo contesta per iscritto entro ${rc} giorni, il rendiconto si intende accettato.</p>
+    <p class="ra-p"><b>8.4 Rate mensili.</b> Per ogni mese il Conferitore paga una rata: tonnellate del mese × importo unitario di rata. L'importo unitario è (totale fattura − anticipo) ÷ quantitativo massimo, arrotondato al centesimo: per questo contratto è <b>€ ${eur(k.unit)} per tonnellata</b>${x.anticipoTipo==='iva'||!x.anticipoTipo?", pari al prezzo, perché l'anticipo è pari all'IVA":''}. Esempio: con ${qty(tEs)} t conferite nel mese la rata è di € ${eur(round2(tEs*k.unit))}.
+      La rata si paga con bonifico a <b>${gg} giorni dalla fine del mese di conferimento</b>, sul conto corrente intestato a Cava Basalto Laghetto S.r.l., <b>IBAN ${vuoto(a.iban)}</b>. Nei mesi senza conferimenti non c'è rata. L'ultima rata chiude esattamente il residuo della fattura.</p>
+    <p class="ra-p"><b>8.5 Ritardi.</b> Ai sensi del D.Lgs. 231/2002 (direttiva 2000/35/CE, modificato dal D.Lgs. 192/2012), in caso di ritardo il Gestore fattura gli interessi moratori maturati. Chiede inoltre il risarcimento dell'ulteriore danno che ne deriva. Non si possono proporre azioni od opporre eccezioni se non a pagamento regolarmente avvenuto. Il Gestore può sospendere l'accettazione dei carichi se le rate precedenti non sono state pagate.</p>
+    ${art(9,'Chiusura del contratto e quantità non conferita')}
+    ${li(["Il contratto si chiude con l'ultima rata, al conferimento del quantitativo massimo. Entro 30 giorni il Gestore invia il conteggio finale.",
+      "Il contratto si chiude prima per inattività (art. 3) o per risoluzione (art. 11). In questi casi si fa il conguaglio: il Conferitore deve il corrispettivo più IVA delle sole tonnellate conferite.",
+      `Per la quantità non conferita il Gestore emette nota di credito (art. 26, comma 2, D.P.R. 633/1972). Entro 60 giorni restituisce la quota di anticipo che corrisponde alla quantità non conferita: anticipo × (tonnellate non conferite ÷ quantitativo massimo). Esempio: con chiusura a ${qty(tChiusa)} t, nota di credito di € ${eur(es.nc)} e restituzione di € ${eur(es.rest)}.`,
+      "La riduzione del corrispettivo per la quantità non conferita è prevista da questa clausola fin dalla firma. Non deriva da un accordo successivo tra le Parti."])}
+    ${art(10,'Responsabilità')}
+    ${li(["Il produttore del rifiuto indicato in ciascun Allegato A risponde della classificazione, dell'attribuzione del codice EER e della caratterizzazione analitica (artt. 183 e 188 D.Lgs. 152/2006).",
+      "Il Gestore è la mera destinataria del carico. Non risponde quindi delle violazioni del codice della strada commesse dal committente del trasporto, dal conducente o dal proprietario dell'automezzo."])}
+    ${art(11,'Sospensione e risoluzione')}
+    ${li(["Il contratto si risolve di diritto (art. 1456 c.c.), con comunicazione via PEC del Gestore, in tre casi: a) anticipo non versato entro 15 giorni dalla firma; b) due rate mensili non pagate alla scadenza; c) ripetuti conferimenti non conformi.",
+      "In caso di risoluzione restano dovute le rate dei conferimenti già eseguiti. La quantità non conferita si regola come all'art. 9."])}
+    ${art(12,'Variazioni')}
+    <p class="ra-p">Il contratto si può modificare solo per iscritto, con la firma della Soc. Cava Basalto Laghetto S.r.l. Non comprende nulla che non sia specificato. Firmato per accettazione, vale come ordine.</p>
+    ${art(13,'Dati personali')}
+    <p class="ra-p">Le Parti trattano i dati personali dell'altra solo per eseguire il contratto e per gli obblighi di legge, ai sensi del Reg. UE 2016/679.</p>
+    ${art(14,'Foro competente')}
+    <p class="ra-p">Per ogni controversia sull'interpretazione e sull'esecuzione del contratto è competente in via esclusiva il Tribunale Ordinario di Roma.</p>
+    ${String(x.note||'').trim()?`<div class="ra-h2">Pattuizioni aggiuntive</div><p class="ra-p" style="white-space:pre-wrap">${e(x.note)}</p>`:''}
+    <div class="firme-2">
+      <div><div class="ra-firma">Il Gestore — Cava Basalto Laghetto S.r.l.</div><div class="ra-firma-line"></div><div class="ra-firma-cap">${e(x.firmaCava||'(timbro e firma)')}</div></div>
+      <div><div class="ra-firma">Il Conferitore — ${e(c.ragioneSociale||x.ditta||'')}</div><div class="ra-firma-line"></div><div class="ra-firma-cap">${e(x.firmaCliente||'(timbro e firma)')}</div></div>
+    </div>
+    <p class="ra-p">Ai sensi degli artt. 1341 e 1342 c.c., il Conferitore approva espressamente le seguenti clausole: art. 6 (respingimento dei carichi e costi); art. 8.2 (anticipo e inizio dei conferimenti dopo l'accredito); art. 8.3 (rendiconto accettato se non contestato nei termini); art. 8.5 (nessuna azione od eccezione prima del pagamento; sospensione dei carichi); art. 9 (quantità non conferita); art. 10 (esonero di responsabilità); art. 11 (risoluzione); art. 14 (foro esclusivo).</p>
+    <div class="ra-firma">Per accettazione — Il Conferitore</div><div class="ra-firma-line"></div><div class="ra-firma-cap">(timbro e firma)</div>
+    <div class="ra-h2" style="page-break-before:always;margin-top:22px">Allegato A — Scheda di omologa del cantiere</div>
+    <p class="ra-p">Si compila una scheda per ogni cantiere, prima del primo carico.</p>
+    ${schede}
+    <div class="ra-pie">${e(RA_DEF.piePagina)} · Contratto con anticipo per il conferimento — EER ${e(x.codiceCer)}</div>
+  </div>`;
+  openPreview({type:'contrattoRA',id,doc:x,title:`Contratto R.A. con anticipo ${nn}`,filename:`Contratto_RA_anticipo_${String(nn).replace(/\W+/g,'-')}`,
+    email:{to:c.pec||c.email||'',subject:`Contratto con anticipo per il conferimento di terre e rocce da scavo n. ${nn}`,
+      body:`Buongiorno,\nin allegato il contratto con anticipo per il conferimento di terre e rocce da scavo (EER ${x.codiceCer||'17 05 04'}).\n\nCava Basalto Laghetto srl`}},html);
+  setTimeout(()=>raCalcPagine(id),80);
+}
+
+/* ---- Scadenzario: anticipo, rate mensili e restituzione ---- */
+function raAntScadItems(){
+  const out=[];
+  (S.contrattiRA||[]).filter(raIsAnt).forEach(x=>{
+    let st;try{st=raAntStato(x);}catch(e){return;}
+    const cli=clienteName(x.clienteId)||x.ditta||'',nn=raNum(x),orig='Contratto R.A. con anticipo';
+    if(!x.anticipoIncassato&&st.k.ant>0)out.push({dir:'incasso',data:x.data||'',importo:st.k.ant,desc:`Anticipo contratto R.A. ${nn}`,contro:cli,origine:orig,kind:'raAnt',id:x.id});
+    st.mesi.forEach(r=>{if(r.rata>0&&!r.pagata)out.push({dir:'incasso',data:r.scad,importo:r.rata,desc:`Rata ${raMeseLab(r.m)} · contratto R.A. ${nn} (${qty(r.tEff)} t)`,contro:cli,origine:orig,kind:'raRata',id:x.id+'|'+r.m});});
+    if(x.stato==='chiuso'&&x.chiusura&&num(x.chiusura.rest)>0&&!x.chiusura.restituito)
+      out.push({dir:'pagamento',data:x.chiusura.scadRest||'',importo:num(x.chiusura.rest),desc:`Restituzione anticipo · contratto R.A. ${nn}`,contro:cli,origine:orig,kind:'raRest',id:x.id});
+  });
+  return out;
+}
+/* Fatture (interne ed elettroniche) dei contratti con anticipo: nello scadenzario valgono anticipo e rate */
+function raAntFattureEscluse(){
+  const fi=new Set(),fe=new Set();
+  (S.fatture||[]).forEach(f=>{if(f.raId){fi.add(f.id);const e=fatturaFE(f);if(e)fe.add(e.id);}});
+  return {fi,fe};
+}
+
+/* Nuovo contratto: scelta del tipo (Standard / Con anticipo); modifica: apre l'editor del suo tipo */
+function openContrattoRA(id){const r=id?S.contrattiRA.find(s=>s.id===id):null;if(r&&raIsAnt(r))return openContrattoRAAnt(id);if(id)return openContrattoRAStd(id);raSceltaTipo();}
+function openContrattoRAStd(id){
   const x=id?{...RA_DEF,...S.contrattiRA.find(s=>s.id===id)}:raNuovo();
   raFiles=(x.allegati||[]).map(a=>({...a}));
   const cliOpts=`<option value="">— scegli per compilare i dati —</option>`+S.clienti.map(c=>`<option value="${c.id}" ${x.clienteId===c.id?'selected':''}>${esc(c.ragioneSociale)}</option>`).join('');
@@ -3568,6 +4115,7 @@ function printContratto(id){
     email:{to:cli.email||cli.pec||'',subject:`Contratto ${contrattoTipoNome(c)} - Cava Basalto Laghetto srl`,body:`Buongiorno,\nin allegato il contratto.\n\nCava Basalto Laghetto srl`}},html);
 }
 function printContrattoRA(id){
+  {const r0=S.contrattiRA.find(s=>s.id===id);if(raIsAnt(r0)){printContrattoRAAnt(id);return;}}
   const x={...RA_DEF,...S.contrattiRA.find(s=>s.id===id)};
   const umP=x.umPrezzo||x.um||'Metri cubi', umQ=x.umQuantita||x.um||'Metri cubi';
   const html=`<div class="doc ra">
@@ -3641,7 +4189,7 @@ function confFiltra(){ let rows=[...S.conferimenti];
   if(filtriConf.al)rows=rows.filter(x=>(x.data||'')<=filtriConf.al);
   if(filtriConf.eer)rows=rows.filter(x=>(x.eer||'')===filtriConf.eer);
   const t=(searchTerm.conferimenti||'').toLowerCase().trim();
-  if(t)rows=rows.filter(x=>[x.produttore,x.eer,x.descrizione,x.cantiere].filter(Boolean).join(' ').toLowerCase().includes(t));
+  if(t)rows=rows.filter(x=>[x.produttore,x.eer,x.descrizione,x.cantiere,x.fir,x.targa,x.trasportatore].filter(Boolean).join(' ').toLowerCase().includes(t));
   return rows.sort((a,b)=>(b.data||'').localeCompare(a.data||''));
 }
 function confEers(){const s=new Set(S.conferimenti.map(x=>x.eer).filter(Boolean));return [...s].sort();}
@@ -3676,7 +4224,7 @@ function renderConferimenti(c){
           <tbody>${rows.map(x=>`<tr>
             <td class="sub">${x.data?dmy(x.data):'—'}</td>
             <td><span class="pill grey">${esc(x.eer||'—')}</span></td>
-            <td>${esc(x.descrizione||'—')}</td>
+            <td>${esc(x.descrizione||'—')}${(x.fir||x.raId)?`<div class="sub">${x.fir?'FIR '+esc(x.fir):''}${x.fir&&x.raId?' · ':''}${x.raId?(()=>{const r=S.contrattiRA.find(q=>q.id===x.raId);return r?'contratto R.A. '+esc(raNum(r)):'';})():''}</div>`:''}</td>
             <td>${esc(x.produttore||'—')}</td>
             <td class="sub">${esc(x.cantiere||'')}</td>
             <td class="num strong">${x.quantita?qty(x.quantita)+' '+esc(x.um||''):'—'}</td>
@@ -3685,17 +4233,26 @@ function renderConferimenti(c){
           </tr>`).join('')}</tbody></table>`}
     </div>`;
 }
-function openConferimento(id){
-  const x=id?S.conferimenti.find(y=>y.id===id):{id:uid(),data:today(),eer:'17 05 04',descrizione:'Terre e rocce da scavo',produttore:'',cantiere:'',quantita:'',um:(S.unitaMisura[0]&&S.unitaMisura[0].nome)||'Metri cubi',rapporto:'',note:''};
+function openConferimento(id,preset){
+  const x=id?S.conferimenti.find(y=>y.id===id):{id:uid(),data:today(),eer:'17 05 04',descrizione:'Terre e rocce da scavo',produttore:'',cantiere:'',quantita:'',um:(S.unitaMisura[0]&&S.unitaMisura[0].nome)||'Metri cubi',rapporto:'',note:'',...(preset||{})};
+  if(x.raId&&!id&&S.unitaMisura.some(u=>u.nome==='Tonnellate'))x.um='Tonnellate';
+  const raList=(S.contrattiRA||[]).filter(r=>raIsAnt(r)&&(r.stato!=='chiuso'||r.id===x.raId));
+  const raOpts=`<option value="">— nessuno —</option>`+raList.map(r=>`<option value="${r.id}" ${x.raId===r.id?'selected':''}>${esc(raNum(r))} · ${esc(r.ditta||'')}</option>`).join('');
   const umOpts=S.unitaMisura.map(u=>`<option ${x.um===u.nome?'selected':''}>${esc(u.nome)}</option>`).join('');
   const cliList=S.clienti.filter(cl=>!cl.isAzienda).map(cl=>`<option value="${esc(clienteName(cl.id))}">`).join('');
   const body=`<div class="form-grid">
+    <div class="field col2"><label>Contratto R.A. con anticipo (facoltativo)</label><select id="cf-ra" onchange="cfRaChange()">${raOpts}</select>
+      <span class="hint">Collegando il formulario al contratto, le tonnellate entrano nel rendiconto mensile e nelle rate.</span></div>
+    <div class="field col2" id="cf-om-wrap" style="${x.raId?'':'display:none'}"><label>Cantiere (omologa)</label><select id="cf-om" onchange="cfOmChange()"></select></div>
     <div class="field"><label>Data</label><input id="cf-data" type="date" value="${x.data||''}"></div>
+    <div class="field"><label>Formulario (FIR) n°</label><input id="cf-fir" value="${esc(x.fir||'')}" placeholder="Numero del formulario"></div>
+    <div class="field"><label>Trasportatore</label><input id="cf-trasp" value="${esc(x.trasportatore||'')}"></div>
+    <div class="field"><label>Targa</label><input id="cf-targa" value="${esc(x.targa||'')}"></div>
     <div class="field"><label>Codice E.E.R.</label><input id="cf-eer" value="${esc(x.eer||'')}"></div>
     <div class="field col2"><label>Descrizione</label><input id="cf-desc" value="${esc(x.descrizione||'')}"></div>
     <div class="field col2"><label>Produttore</label><input id="cf-prod" list="cf-prod-list" value="${esc(x.produttore||'')}" placeholder="Nome del produttore"><datalist id="cf-prod-list">${cliList}</datalist></div>
     <div class="field col2"><label>Cantiere di provenienza</label><input id="cf-cant" value="${esc(x.cantiere||'')}"></div>
-    <div class="field"><label>Quantità</label><input id="cf-qta" type="number" step="any" value="${x.quantita!=null&&x.quantita!==''?x.quantita:''}"></div>
+    <div class="field"><label>Quantità (peso netto a destino)</label><input id="cf-qta" type="number" step="any" value="${x.quantita!=null&&x.quantita!==''?x.quantita:''}"></div>
     <div class="field"><label>Unità di misura</label><select id="cf-um">${umOpts}</select></div>
     <div class="field col2"><label>Rapporto di prova / riferimento</label><input id="cf-rapp" value="${esc(x.rapporto||'')}"></div>
     <div class="field col2"><label>Note</label><textarea id="cf-note" rows="2">${esc(x.note||'')}</textarea></div>
@@ -3703,11 +4260,37 @@ function openConferimento(id){
   openModal(`${id?'Modifica':'Nuovo'} conferimento`,body,()=>{
     const v=i=>{const el=document.getElementById(i);return el?el.value.trim():'';};
     const data={...x,data:v('cf-data')||today(),eer:v('cf-eer'),descrizione:v('cf-desc'),produttore:v('cf-prod'),cantiere:v('cf-cant'),
-      quantita:v('cf-qta')===''?'':num(v('cf-qta')),um:document.getElementById('cf-um').value,rapporto:v('cf-rapp'),note:v('cf-note')};
+      quantita:v('cf-qta')===''?'':num(v('cf-qta')),um:document.getElementById('cf-um').value,rapporto:v('cf-rapp'),note:v('cf-note'),
+      raId:v('cf-ra'),omologaId:v('cf-ra')?v('cf-om'):'',fir:v('cf-fir'),trasportatore:v('cf-trasp'),targa:v('cf-targa')};
+    if(data.raId){
+      const ra=S.contrattiRA.find(r=>r.id===data.raId);
+      if(!(num(data.quantita)>0)){toast('Inserisci il peso netto a destino');return false;}
+      const om=ra&&(ra.omologhe||[]).find(o=>o.id===data.omologaId);
+      if(ra&&(ra.omologhe||[]).length&&!om){toast('Scegli il cantiere (omologa) del formulario');return false;}
+      if(om&&om.validoFino&&data.data>om.validoFino)setTimeout(()=>toast('Attenzione: le analisi del cantiere sono scadute il '+dmy(om.validoFino)),400);
+      if(ra&&data.data<(ra.data||''))setTimeout(()=>toast('Attenzione: il formulario è precedente alla firma del contratto'),400);
+    }
     if(id){const i=S.conferimenti.findIndex(y=>y.id===id);S.conferimenti[i]=data;}else S.conferimenti.push(data);
-    logAction(id?'Conferimento modificato':'Conferimento aggiunto',`${data.eer} · ${data.produttore||'—'} · ${data.quantita||''} ${data.um||''}`);
+    logAction(id?'Conferimento modificato':'Conferimento aggiunto',`${data.eer} · ${data.produttore||'—'} · ${data.quantita||''} ${data.um||''}${data.fir?' · FIR '+data.fir:''}`);
     persist();render();toast('Conferimento salvato');return true;
   },{submitLabel:'Salva conferimento'});
+  if(x.raId){cfRaChange(x.omologaId||'_');if(!id&&!x.omologaId)cfOmChange();}
+}
+function cfRaChange(keep){
+  const raId=(document.getElementById('cf-ra')||{}).value||'';const ra=S.contrattiRA.find(r=>r.id===raId);
+  const wrap=document.getElementById('cf-om-wrap'),sel=document.getElementById('cf-om');if(!wrap||!sel)return;
+  wrap.style.display=ra?'':'none';
+  const cur=keep||sel.value;
+  sel.innerHTML=ra?((ra.omologhe||[]).length?(ra.omologhe||[]).map(o=>`<option value="${o.id}" ${o.id===cur?'selected':''}>${esc(o.numero||'')} — ${esc(o.cantiere||'')}</option>`).join(''):'<option value="">— nessun cantiere nel contratto —</option>'):'';
+  if(ra){const um=document.getElementById('cf-um');if(um&&[...um.options].some(o=>o.value==='Tonnellate'))um.value='Tonnellate';
+    const eer=document.getElementById('cf-eer');if(eer&&ra.codiceCer)eer.value=ra.codiceCer;
+    if(!keep)cfOmChange();}
+}
+function cfOmChange(){
+  const ra=S.contrattiRA.find(r=>r.id===((document.getElementById('cf-ra')||{}).value||''));if(!ra)return;
+  const o=(ra.omologhe||[]).find(q=>q.id===((document.getElementById('cf-om')||{}).value||''));if(!o)return;
+  const set=(i,v)=>{const el=document.getElementById(i);if(el&&v)el.value=v;};
+  set('cf-prod',o.produttore||ra.ditta);set('cf-cant',o.cantiere);set('cf-rapp',[o.rapportoProva,o.dataRapporto?'del '+dmy(o.dataRapporto):''].filter(Boolean).join(' '));
 }
 function delConferimento(id){const x=S.conferimenti.find(y=>y.id===id);confirmDialog('Eliminare questo conferimento?','Operazione non reversibile.',()=>{S.conferimenti=S.conferimenti.filter(y=>y.id!==id);logAction('Conferimento eliminato',x?`${x.eer} · ${x.produttore||''}`:'');persist();render();toast('Conferimento eliminato');});}
 function stampaRegistroConf(){
@@ -3930,13 +4513,15 @@ function stampaRegistroRif(){
 /* ===================== SCADENZARIO INCASSI/PAGAMENTI ===================== */
 const filtriSC={dir:'',stato:''};
 function scadItems(){
-  const out=[];
-  S.fatture.filter(f=>!f.incassata).forEach(f=>out.push({dir:'incasso',data:f.scadenza||'',importo:num(f.totale),desc:`Fattura ${f.numero}/${f.anno}`,contro:clienteName(f.clienteId)||'',origine:'Fattura interna',kind:'fint',id:f.id,feId:(fatturaFE(f)||{}).id||''}));
-  S.fattureEl.filter(f=>!f.pagata).forEach(f=>{const dir=f.tipo==='attiva'?'incasso':'pagamento';const scad=(f.pagamenti&&f.pagamenti[0]&&f.pagamenti[0].scadenza)?f.pagamenti[0].scadenza:(f.data||'');
+  const out=[];const raEx=raAntFattureEscluse();
+  S.fatture.filter(f=>!f.incassata&&!raEx.fi.has(f.id)).forEach(f=>out.push({dir:'incasso',data:f.scadenza||'',importo:num(f.totale),desc:`Fattura ${f.numero}/${f.anno}`,contro:clienteName(f.clienteId)||'',origine:'Fattura interna',kind:'fint',id:f.id,feId:(fatturaFE(f)||{}).id||''}));
+  S.fattureEl.filter(f=>!f.pagata&&!raEx.fe.has(f.id)).forEach(f=>{const dir=f.tipo==='attiva'?'incasso':'pagamento';const scad=(f.pagamenti&&f.pagamenti[0]&&f.pagamenti[0].scadenza)?f.pagamenti[0].scadenza:(f.data||'');
     out.push({dir,data:scad,importo:feResiduo(f),desc:`Fattura ${f.numero||''}`,contro:f.controparteNome||'',origine:'Fattura elettronica',kind:'fel',id:f.id,feId:f.id});});
   // IVA da versare (liquidazione periodica chiusa, non ancora registrata come versata, scadenza da oggi in poi)
   try{const t=today();[String(+t.slice(0,4)-1),t.slice(0,4)].forEach(a=>ivaLiqCalc(a).forEach(p=>{
     if(p.daVersare>0&&!p.versato&&p.a<t&&p.scad>=t)out.push({dir:'pagamento',data:p.scad,importo:p.daVersare,desc:`IVA ${p.lab} ${a} · F24 cod. ${p.codice}${p.annuale?' (saldo annuale)':''}`,contro:'Erario',origine:'Liquidazione IVA',kind:'iva',id:p.k});}));}catch(e){}
+  // contratti R.A. con anticipo: anticipo alla firma, rate mensili dai formulari, restituzione a chiusura
+  try{raAntScadItems().forEach(r=>out.push(r));}catch(e){}
   return out;
 }
 function scadFiltra(){
@@ -3948,7 +4533,8 @@ function scadFiltra(){
   if(term)rows=rows.filter(r=>[r.desc,r.contro,r.origine].filter(Boolean).join(' ').toLowerCase().includes(term));
   return rows.sort((a,b)=>(a.data||'9999').localeCompare(b.data||'9999'));
 }
-function scadSaldaItem(kind,id){ if(kind==='iva'){ivaVersatoDialog(id.slice(0,4),id);return;} if(kind==='fint')fatturaToggleIncasso(id); else feToggleStato(id); }
+function scadSaldaItem(kind,id){ if(kind==='iva'){ivaVersatoDialog(id.slice(0,4),id);return;}
+  if(kind==='raAnt'){raAntToggleAnticipo(id);return;} if(kind==='raRata'){raAntToggleRata(id);return;} if(kind==='raRest'){raAntToggleRest(id);return;} if(kind==='fint')fatturaToggleIncasso(id); else feToggleStato(id); }
 function renderScadenzario(c){
   const rows=scadFiltra(),t=today();
   const inc=scadItems().filter(r=>r.dir==='incasso'),pag=scadItems().filter(r=>r.dir==='pagamento');
@@ -3981,7 +4567,7 @@ function renderScadenzario(c){
           <tbody>${rows.map(r=>`<tr>
             <td>${cell(r)}</td>
             <td><span class="pill ${r.dir==='incasso'?'ok':'danger'}">${r.dir==='incasso'?'Incasso':'Pagamento'}</span></td>
-            <td>${esc(r.desc)}${r.feId?`<div class="sub"><span class="golink" onclick="goHighlight('fattureEl','fe-${r.feId}')">vedi fattura elettronica ↗</span></div>`:''}${r.kind==='iva'?`<div class="sub"><span class="golink" onclick="liqAnno='${r.id.slice(0,4)}';liqSel='${r.id}';go('liqIva')">apri liquidazione ↗</span></div>`:''}</td><td>${esc(r.contro||'—')}</td><td class="sub">${esc(r.origine)}</td>
+            <td>${esc(r.desc)}${r.feId?`<div class="sub"><span class="golink" onclick="goHighlight('fattureEl','fe-${r.feId}')">vedi fattura elettronica ↗</span></div>`:''}${r.kind==='iva'?`<div class="sub"><span class="golink" onclick="liqAnno='${r.id.slice(0,4)}';liqSel='${r.id}';go('liqIva')">apri liquidazione ↗</span></div>`:''}${/^ra/.test(r.kind||'')?`<div class="sub"><span class="golink" onclick="go('contrattiRA');setTimeout(()=>raAntScheda('${String(r.id).split('|')[0]}'),30)">apri contratto ↗</span></div>`:''}</td><td>${esc(r.contro||'—')}</td><td class="sub">${esc(r.origine)}</td>
             <td class="num strong">€ ${eur(r.importo)}</td>
             <td class="actions"><button class="btn sm" onclick="scadSaldaItem('${r.kind}','${r.id}')">${r.kind==='iva'?'Segna versata':'Segna '+(r.dir==='incasso'?'incassata':'pagata')}</button></td>
           </tr>`).join('')}</tbody></table>`}
@@ -5728,7 +6314,7 @@ function fatturaAddLine(r){
 function fatturaHasRif(){
   const ddt=document.querySelectorAll('.f-ddt:checked').length>0;
   const contr=(fatturaContratti&&fatturaContratti.length>0)||!!(document.getElementById('f-contratto')||{}).value;
-  return ddt||contr;
+  return ddt||contr||!!fattRaMode;
 }
 function fatturaUpdateMode(){
   const wrap=document.getElementById('f-lines-wrap');if(!wrap)return;
@@ -5839,9 +6425,12 @@ function fatturaNuovoMateriale(rec){
   }
   fatturaAddLine({descrizione:rec.descrizione,um:rec.um,quantita:1,prezzoUnitario:prezzoMateriale(rec.id,{clienteId:cid,contrattoId:ct}),aliquotaIva:rec.aliquotaIva!=null?rec.aliquotaIva:22});
 }
+let fattRaLink=null,fattRaMode=null;
 function openFatturaForm(id,dup){
   const isEdit=!!id;
+  fattRaLink=(!isEdit&&dup&&dup.__raLink)||null;
   const f=isEdit?{...S.fatture.find(x=>x.id===id)}:(dup?{...dup}:{});
+  fattRaMode=fattRaLink||(isEdit&&f.raId)||null; // fattura di un contratto R.A. con anticipo: righe con U.M. e quantità
   const nn=isEdit?{numero:f.numero,anno:f.anno}:nextNumber('fattura');
   const clienteOpts=`<option value="">— seleziona —</option>`+S.clienti.map(c=>`<option value="${c.id}" ${f.clienteId===c.id?'selected':''}>${esc(c.ragioneSociale)}</option>`).join('');
   const matOpts=`<option value="">+ aggiungi da materiale…</option>`+S.materiali.map(m=>`<option value="${m.id}">${esc(m.descrizione)}</option>`).join('');
@@ -6110,6 +6699,10 @@ function saveFattura(id,anno){
     note:document.getElementById('f-note').value.trim(),
   };
   ddtIds.forEach(did=>{const d=S.ddt.find(x=>x.id===did);if(d)d.fatturato=true;});
+  // fattura alla firma di un contratto R.A. con anticipo: resta collegata al contratto
+  if(old&&old.raId)data.raId=old.raId;
+  else if(!id&&fattRaLink){const ra=S.contrattiRA.find(r=>r.id===fattRaLink);if(ra){data.raId=ra.id;ra.fatturaId=data.id;}}
+  fattRaLink=null;
   if(id){const i=S.fatture.findIndex(x=>x.id===id);S.fatture[i]=data;}
   else S.fatture.push(data);
   commitNumber('fattura',data.anno,data.numero);

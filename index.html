@@ -3309,6 +3309,15 @@ function openScadenza(id){
 
 /* ===================== CONTRATTI RECUPERO AMBIENTALE (editing) ===================== */
 const RA_UM=['Metri cubi','Tonnellate'];
+/* Documenti da presentare per ogni cantiere (contratto standard punto 1, contratto con anticipo art. 4.2, brochure «Linee guida») */
+const RA_ANT_DOCUMENTI=[
+  "Test di cessione: Allegato 3 del D.M. 05/02/1998, sostituito dall'art. 1 del D.M. 186 del 05/04/2006 — laboratorio accreditato ACCREDIA;",
+  "Analisi chimiche: Colonna A della Tabella 1 dell'Allegato 5 alla Parte Quarta, Titolo V, del D.Lgs. 152/2006 (modificato dal D.Lgs. 4 del 16/01/2008 e s.m.i.) — laboratorio accreditato ACCREDIA;",
+  "Verifiche di conformità ai fini della classificazione in base alle caratteristiche di pericolo secondo il Regolamento UE 1357/2014, con giudizio di non pericolosità del rifiuto ai sensi del D.Lgs. 152/2006 e s.m.i., Parte IV, Allegato D — laboratorio accreditato ACCREDIA;",
+  "Verbale di campionamento nel rispetto della norma UNI 10802:2023, a firma di un tecnico iscritto all'albo professionale;",
+  "Caratterizzazione di base del rifiuto e documentazione complementare, a cura del produttore, sul modulo Md2 delle Linee guida per i rifiuti inerti della Regione Lazio (D.G.R. 34 del 26/01/2012): origine e cantiere di produzione, codice EER 17 05 04, processo che ha generato il rifiuto; campionamento e analisi al primo conferimento, poi ogni 24 mesi e a ogni modifica sostanziale del processo produttivo (art. 8 del D.M. 05/02/1998);",
+  "Formulario di identificazione del rifiuto (FIR) compilato a norma di legge, conforme al RENTRI;",
+  "Iscrizione del trasportatore all'Albo Nazionale Gestori Ambientali (autorizzazione al trasporto dei rifiuti)."];
 const RA_DEF={
   titolo:`CONTRATTO PER IL CONFERIMENTO DI TERRE E ROCCE DA SCAVO`,
   sottotitolo:`EER 17.05.04 — diverse da quelle di cui alla voce 17.05.03 — D.M. 5/2/1998 e s.m.i., punto 7.31 bis`,
@@ -3317,7 +3326,7 @@ const RA_DEF={
   codiceCer:`17 05 04`,
   descrizioneCer:`Terre e rocce da scavo diverse da quelle di cui alla voce 170503`,
   modalitaConferimento:`Terre e rocce da scavo per il recupero ambientale R10`,
-  condizioni1:`Per il conferimento deve essere effettuata la caratterizzazione del rifiuto attraverso il campionamento e analisi chimica del materiale da Laboratorio accreditato ACCREDIA a norma UNI CEI EN ISO/IEC 17025, il quale deve essere conforme a quanto previsto dalla legge (Rif. 1. Test di Cessione: Allegato 3 del D.M. 05/2/98 modificato dall'Art. 1 dm 186 del 05/04/06 - 2. Analisi Chimiche: Colonna A della Tabella 1 dell'Allegato 5 alla Parte Quarta Titolo V del D. Lgs n.152/2006 modificato dal D.lgs n°4 del 16/01/08 e s.m.i. - 3. Verifiche di Conformità ai fini della classificazione in base alle caratteristiche di pericolo secondo il Regolamento UE 1357/2014 ai sensi del Dlgs 152/06 e s.m.i. Parte IV Allegato D 4. Verbale di Campionamento nel rispetto delle norme UNI 10802:2023).
+  condizioni1:`Per il conferimento deve essere effettuata la caratterizzazione del rifiuto attraverso il campionamento e analisi chimica del materiale da Laboratorio accreditato ACCREDIA a norma UNI CEI EN ISO/IEC 17025, il quale deve essere conforme a quanto previsto dalla legge. Documenti da presentare: ${RA_ANT_DOCUMENTI.map((t,i)=>(i+1)+'. '+t).join(' ')} Il test di cessione si ripete almeno ogni 12 mesi (art. 9 del D.M. 5/2/1998) e a ogni modifica sostanziale del processo di produzione.
 Eventuali materiali di risulta trovati all'interno delle terre e rocce non devono essere caricati, dovranno essere lasciati nell'area di cantiere per il relativo smaltimento a vostro carico.
 La verifica di conformità verrà effettuata ad ogni conferimento; i materiali non saranno accettati se difformi da quanto campionato ed analizzato.
 Tutti i viaggi di terra trasportati dovranno essere accompagnati da formulario rifiuti compilato a norma di legge e conforme al RENTRI.
@@ -3468,15 +3477,6 @@ function contrattoRAAllegati(raId){raAllegatiDialog(raId,'File allegati al docum
    Registro conferimenti (campo raId), non con DDT. Il contratto «Standard» resta quello di sempre. */
 const RA_ANT_DEF={tipo:'anticipo',codiceCer:'17 05 04',descrizioneCer:'Terre e rocce da scavo diverse da quelle di cui alla voce 17 05 03',
   aliquotaIva:22,anticipoTipo:'iva',anticipoValore:'',giorniPag:60,rendGiorno:5,mesiInattivita:12,omologhe:[],note:''};
-/* Documenti da presentare per ogni cantiere (art. 4.2 del contratto con anticipo e brochure «Linee guida») */
-const RA_ANT_DOCUMENTI=[
-  "Test di cessione: Allegato 3 del D.M. 05/02/1998, sostituito dall'art. 1 del D.M. 186 del 05/04/2006 — laboratorio accreditato ACCREDIA;",
-  "Analisi chimiche: Colonna A della Tabella 1 dell'Allegato 5 alla Parte Quarta, Titolo V, del D.Lgs. 152/2006 (modificato dal D.Lgs. 4 del 16/01/2008 e s.m.i.) — laboratorio accreditato ACCREDIA;",
-  "Verifiche di conformità ai fini della classificazione in base alle caratteristiche di pericolo secondo il Regolamento UE 1357/2014, con giudizio di non pericolosità del rifiuto ai sensi del D.Lgs. 152/2006 e s.m.i., Parte IV, Allegato D — laboratorio accreditato ACCREDIA;",
-  "Verbale di campionamento nel rispetto della norma UNI 10802:2023, a firma di un tecnico iscritto all'albo professionale;",
-  "Caratterizzazione di base del rifiuto e documentazione complementare, a cura del produttore, sul modulo Md2 delle Linee guida per i rifiuti inerti della Regione Lazio (D.G.R. 34 del 26/01/2012): origine e cantiere di produzione, codice EER 17 05 04, processo che ha generato il rifiuto; campionamento e analisi al primo conferimento, poi ogni 24 mesi e a ogni modifica sostanziale del processo produttivo (art. 8 del D.M. 05/02/1998);",
-  "Formulario di identificazione del rifiuto (FIR) compilato a norma di legge, conforme al RENTRI;",
-  "Iscrizione del trasportatore all'Albo Nazionale Gestori Ambientali (autorizzazione al trasporto dei rifiuti)."];
 const RA_MESI=['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
 const raR3=v=>Math.round(num(v)*1000)/1000;
 function raIsAnt(x){return !!x&&x.tipo==='anticipo';}

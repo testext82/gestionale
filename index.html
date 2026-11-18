@@ -616,6 +616,29 @@ function updateFoot(){
 function seedCausali(){ S.causali=['Vendita','Conto lavorazione','Reso','Trasferimento','Omaggio'].map(d=>({id:uid(),descrizione:d})); }
 function seedModPag(){ S.modalitaPagamento=['Contanti','Assegno','RIBA a 30 gg d.f.f.m.','RIBA a 60 gg d.f.f.m.','RIBA a 90 gg d.f.f.m.','Bonifico bancario'].map(n=>({id:uid(),nome:n})); }
 function seedAspetti(){ S.aspetti=['A VISTA','MATERIALE INERTE'].map(d=>({id:uid(),descrizione:d})); }
+/* Unità di misura: i documenti (DDT, fatture, listini, materiali, contratti) la richiamano per NOME.
+   Due voci con lo stesso nome sono quindi doppioni puri: se ne tiene una (sempre la stessa su ogni
+   dispositivo: id più vecchio) e le altre si tolgono senza modificare alcun documento. */
+const umNorm=n=>String(n==null?'':n).trim().toLowerCase();
+function umNomeLibero(rec){
+  rec.nome=String(rec.nome||'').trim();
+  const dup=(S.unitaMisura||[]).find(u=>u.id!==rec.id&&umNorm(u.nome)===umNorm(rec.nome));
+  if(dup){toast('Unità di misura già presente: '+dup.nome);return false;}
+}
+function umDedup(){
+  const arr=S.unitaMisura;if(!Array.isArray(arr))return 0;
+  const keep={};let tolti=0;
+  [...arr].sort((a,b)=>String(a.id).localeCompare(String(b.id))).forEach(u=>{
+    const k=umNorm(u.nome);if(!k)return;
+    const k0=keep[k];
+    if(!k0){keep[k]=u;return;}
+    if(String(k0.nome)!==String(u.nome))return; // nomi diversi solo per maiuscole/spazi: non si tocca (i documenti li distinguono)
+    if((k0.kgPerUnit===''||k0.kgPerUnit==null)&&u.kgPerUnit!==''&&u.kgPerUnit!=null)k0.kgPerUnit=u.kgPerUnit;
+    const i=arr.indexOf(u);if(i>-1){arr.splice(i,1);tolti++;}
+  });
+  if(tolti)logAction('Unità di misura: doppioni rimossi',tolti+' voce/i con nome identico (i documenti restano collegati)');
+  return tolti;
+}
 function seedUnita(){ S.unitaMisura=[
   {id:uid(),nome:'Quintali',kgPerUnit:100},
   {id:uid(),nome:'Metri cubi',kgPerUnit:''},
@@ -1260,7 +1283,8 @@ const ENTITIES={
     fields:[
       {k:'nome',label:'Nome unità',req:true,col2:true},
       {k:'kgPerUnit',label:'Kg per unità (facoltativo — riempie il lordo in automatico)',type:'number',col2:true},
-    ]
+    ],
+    beforeSave:rec=>umNomeLibero(rec)
   },
   mezzi:{
     list:()=>S.mezzi, singular:'Mezzo di trasporto', icon:'truck', groupByCliente:true,
@@ -2047,7 +2071,8 @@ const QUICKADD={
       {k:'prezzoUnitario',label:'Prezzo listino base (€)',type:'number'},{k:'aliquotaIva',label:'Aliquota IVA (%)',type:'number',def:22}],
     after:rec=>{const def=S.listini.find(l=>l.tipo==='default');if(def&&num(rec.prezzoUnitario)>0){def.voci=def.voci||[];def.voci.push({materialeId:rec.id,um:rec.um||'',prezzo:num(rec.prezzoUnitario)});}}},
   unitaMisura:{singular:'unità di misura',arr:()=>S.unitaMisura,label:x=>x.nome,value:x=>x.nome,
-    fields:[{k:'nome',label:'Nome unità',req:true,col2:true},{k:'kgPerUnit',label:'Kg per unità (facoltativo)',type:'number',col2:true}]},
+    fields:[{k:'nome',label:'Nome unità',req:true,col2:true},{k:'kgPerUnit',label:'Kg per unità (facoltativo)',type:'number',col2:true}],
+    prepare:rec=>umNomeLibero(rec)},
   causali:{singular:'causale',arr:()=>S.causali,label:x=>x.descrizione,value:x=>x.descrizione,
     fields:[{k:'descrizione',label:'Causale del trasporto',req:true,col2:true}]},
   aspetti:{singular:'aspetto esteriore',arr:()=>S.aspetti,label:x=>x.descrizione,value:x=>x.descrizione,
@@ -7367,6 +7392,8 @@ async function sbBackgroundSync(){
       // Collegamento automatico degli addebiti carta all'estratto (robusto, idempotente, salvato sul server)
       try{ const _nl=cartaLinkBanca(); if(_nl){ await Store.set(KEY,S); render(); await sbPush(); } }catch(e){ console.warn('Auto-collegamento carta non riuscito',e); }
     }
+    // Doppioni di unità di misura (nome identico): si tolgono e la rimozione va anche sul server
+    try{ if(umDedup()){ await Store.set(KEY,S); render(); await sbPush(); } }catch(e){ console.warn('Pulizia unità di misura non riuscita',e); }
     sbOffline=false; syncStatusSB('ok');
   }catch(e){
     console.warn('Sincronizzazione in sottofondo non riuscita, uso la copia locale',e);

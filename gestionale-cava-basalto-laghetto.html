@@ -826,7 +826,7 @@ function openDiagnostica(){
 /* ===================== DIAGNOSTICA (Impostazioni) =====================
    Registro degli eventi salvato su questo dispositivo (ultime 300 righe): avvio, errori, sincronizzazione,
    invio degli allegati. In Impostazioni: stato dell'app, controlli sui dati, test delle funzioni, copia del rapporto. */
-const APP_BUILD='19/11/2026 10:47';
+const APP_BUILD='19/11/2026 11:03';
 const DIAG_KEY='cbl_diag_log';
 let diagSyncUltimo='';let sbUltimoOk=0;
 function diagRighe(){try{return JSON.parse(localStorage.getItem(DIAG_KEY)||'[]');}catch(e){return [];}}
@@ -896,6 +896,8 @@ function diagControlliDati(){
     ...(S.fatture||[]).filter(f=>f.clienteId&&!cli.has(f.clienteId)).map(f=>`fattura ${f.numero}/${f.anno}`)]);
   const ids=[];SB_ARRAYS.filter(c=>!SB_META.includes(c)).forEach(c=>{const v=new Set();let senza=0;(S[c]||[]).forEach(x=>{if(!x||typeof x!=='object'||x.id==null){senza++;return;}const k=String(x.id);if(v.has(k))ids.push(`${c}: id doppio ${k}`);v.add(k);});if(senza)ids.push(`${c}: ${senza} senza id`);});
   add('Record senza identificativo o doppi (sincronizzazione)',ids);
+  add('Categorie doppie o quasi uguali negli elenchi',DIAG_CATEGORIE.flatMap(([k,label])=>{const c=catCoppie((S[k]||[]).map(String));
+    return [...c.esatti.map(n=>`${label}: «${n}» ripetuta`),...c.uguali.map(([a,b])=>`${label}: «${a}» = «${b}»`),...c.simili.map(([a,b])=>`${label}: «${a}» / «${b}»`)];}));
   const cm=diagCategorieMancanti();
   out.push({t:'Categorie usate nei documenti ma assenti dall\'elenco',ok:!cm.length,
     d:cm.length?cm.map(x=>`${x.label}: ${x.mancanti.length} (${x.mancanti.slice(0,4).join(', ')}${x.mancanti.length>4?'…':''})`).join(' · '):'nessun problema',
@@ -3239,7 +3241,7 @@ function sicCatAdd(){
 function openSicCategorie(){
   const uso=n=>S.sicurezza.filter(s=>s.categoria===n).length;
   const body=`
-    <div class="note">${svg(IC.tag)}<div>Modifica i nomi, aggiungine di nuove o eliminale. Rinominando una categoria, le sezioni che la usano vengono aggiornate.</div></div>
+    <div class="note">${svg(IC.tag)}<div>Modifica i nomi, aggiungine di nuove o eliminale. Rinominando una categoria, le sezioni che la usano vengono aggiornate. Per unire due categorie, scrivi in una lo stesso nome dell'altra.</div></div>
     <div class="lines"><table><thead><tr><th>Categoria</th><th></th></tr></thead>
       <tbody id="sic-cat-body">${S.sicCategorie.map(n=>sicCatRow(n)).join('')}</tbody></table></div>
     <div style="margin-top:8px"><button type="button" class="btn sm" onclick="sicCatAdd()">${svg(IC.plus)} Aggiungi categoria</button></div>
@@ -3248,14 +3250,13 @@ function openSicCategorie(){
     const campi=[...document.querySelectorAll('.sic-cat-in')];
     const nuove=campi.map(el=>el.value.trim()).filter(Boolean);
     if(nuove.length===0){toast('Serve almeno una categoria');return false;}
-    const dup=nuove.find((n,i)=>nuove.indexOf(n)!==i);
-    if(dup){toast('Categoria duplicata: '+dup);return false;}
+    if(!catVerificaElenco(nuove,'sic'))return false;
     // rinomino: ogni campo conosce il nome con cui è stato aperto
     campi.forEach(el=>{
       const vecchia=el.dataset.orig,nuova=el.value.trim();
       if(vecchia&&nuova&&vecchia!==nuova)S.sicurezza.forEach(s=>{if(s.categoria===vecchia)s.categoria=nuova;});
     });
-    S.sicCategorie=nuove;
+    S.sicCategorie=[...new Set(nuove)];
     persist();render();toast('Categorie aggiornate');return true;
   },{submitLabel:'Salva categorie'});
 }
@@ -3494,7 +3495,7 @@ function scadCatAdd(){
 function openScadCategorie(){
   const uso=n=>S.scadenze.filter(s=>s.categoria===n).length;
   const body=`
-    <div class="note">${svg(IC.tag)}<div>Aggiungi, rinomina o elimina le categorie delle scadenze. Rinominando una categoria, le scadenze che la usano vengono aggiornate.</div></div>
+    <div class="note">${svg(IC.tag)}<div>Aggiungi, rinomina o elimina le categorie delle scadenze. Rinominando una categoria, le scadenze che la usano vengono aggiornate. Per unire due categorie, scrivi in una lo stesso nome dell'altra.</div></div>
     <div class="lines"><table><thead><tr><th>Categoria</th><th></th></tr></thead>
       <tbody id="scad-cat-body">${S.scadCategorie.map(n=>scadCatRow(n)).join('')}</tbody></table></div>
     <div style="margin-top:8px"><button type="button" class="btn sm" onclick="scadCatAdd()">${svg(IC.plus)} Aggiungi categoria</button></div>
@@ -3503,11 +3504,10 @@ function openScadCategorie(){
     const campi=[...document.querySelectorAll('.scad-cat-in')];
     const nuove=campi.map(el=>el.value.trim()).filter(Boolean);
     if(nuove.length===0){toast('Serve almeno una categoria');return false;}
-    const dup=nuove.find((n,i)=>nuove.indexOf(n)!==i);
-    if(dup){toast('Categoria duplicata: '+dup);return false;}
+    if(!catVerificaElenco(nuove,'scad'))return false;
     campi.forEach(el=>{const vecchia=el.dataset.orig,nuova=el.value.trim();
       if(vecchia&&nuova&&vecchia!==nuova)S.scadenze.forEach(s=>{if(s.categoria===vecchia)s.categoria=nuova;});});
-    S.scadCategorie=nuove;
+    S.scadCategorie=[...new Set(nuove)];
     persist();render();toast('Categorie aggiornate');return true;
   },{submitLabel:'Salva categorie'});
 }
@@ -5721,11 +5721,64 @@ function bancaSetResiduoTipo(id,tipo){const m=S.movimentiBanca.find(x=>x.id===id
 function bancaFuoriArchivio(id){const m=S.movimentiBanca.find(x=>x.id===id);if(!m)return;m.fuoriArchivio=true;m.categoria='';logAction('Movimento segnato fuori archivio',dmy(m.dataContabile)+' · € '+eur(Math.abs(m.importo)));persist();render();toast('Segnato: fattura non in archivio');}
 function bancaAnnullaFuoriArchivio(id){const m=S.movimentiBanca.find(x=>x.id===id);if(!m)return;m.fuoriArchivio=false;persist();render();toast('Riportato tra i da riconciliare');}
 function bancaFuoriArchivioSel(){const ids=[...bancaRowSel];if(!ids.length){toast('Seleziona dei movimenti');return;}let n=0;ids.forEach(id=>{const m=S.movimentiBanca.find(x=>x.id===id);if(m&&!m.riconciliato){m.fuoriArchivio=true;m.categoria='';n++;}});if(n)logAction('Movimenti segnati fuori archivio',n+' movimenti');bancaRowSel.clear();persist();render();toast(n+' movimenti segnati fuori archivio');}
+/* ===================== CATEGORIE: niente doppioni =====================
+   Due nomi sono «la stessa categoria» se coincidono ignorando maiuscole, accenti, punteggiatura, parole come
+   «di/del/e», l'ordine delle parole e singolare/plurale (Multa = Multe, Diritto = Diritti segreteria):
+   in questo caso non si crea una seconda categoria. Se differiscono per una lettera o due (Bolo/Bollo auto)
+   si chiede conferma. Rinominando una categoria con il nome di un'altra, le due si uniscono. */
+const CAT_STOP=new Set(['di','del','della','dello','dei','degli','delle','e','ed','per','la','il','lo','le','gli','i','a','da','in','al','alla','allo','con','su']);
+function catNorm(s){
+  return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,' ').trim().split(' ')
+    .filter(w=>w&&!CAT_STOP.has(w)).map(w=>w.length>3?w.replace(/[aeiou]+$/,''):w).sort().join(' ');
+}
+function catLev(a,b){
+  if(a===b)return 0;const m=a.length,n=b.length;if(!m||!n)return m||n;
+  let prev=Array.from({length:n+1},(_,j)=>j);
+  for(let i=1;i<=m;i++){const cur=[i];for(let j=1;j<=n;j++)cur[j]=Math.min(prev[j]+1,cur[j-1]+1,prev[j-1]+(a[i-1]===b[j-1]?0:1));prev=cur;}
+  return prev[n];
+}
+function catSimili(a,b){const x=catNorm(a),y=catNorm(b);if(x===y)return false;const L=Math.max(x.length,y.length);if(L<4)return false;const d=catLev(x,y);return d<=1||(L>=8&&d<=2);}
+/* Confronta un nome con un elenco (escludi = nome da ignorare, es. quello che si sta rinominando) */
+function catConfronta(nome,lista,escludi){
+  const n=catNorm(nome);let simile=null;
+  for(const c of (lista||[])){if(c===escludi)continue;if(catNorm(c)===n)return {uguale:c};if(!simile&&catSimili(c,nome))simile=c;}
+  return {simile};
+}
+/* Doppioni dentro un elenco: esatti (stesso testo), uguali (stessa categoria scritta diversa), simili */
+function catCoppie(lista){
+  const esatti=[...new Set(lista.filter((n,i)=>lista.indexOf(n)!==i))],un=[...new Set(lista)],uguali=[],simili=[];
+  for(let i=0;i<un.length;i++)for(let j=i+1;j<un.length;j++){if(catNorm(un[i])===catNorm(un[j]))uguali.push([un[i],un[j]]);else if(catSimili(un[i],un[j]))simili.push([un[i],un[j]]);}
+  return {esatti,uguali,simili};
+}
+/* Controllo al salvataggio degli editor a elenco (sicurezza, scadenze). true = si può salvare */
+let _catConferma={};
+function catVerificaElenco(nuove,chiave){
+  const {esatti,uguali,simili}=catCoppie(nuove);
+  if(uguali.length){toast(`«${uguali[0][0]}» e «${uguali[0][1]}» sono la stessa categoria scritta in modo diverso: per unirle scrivile identiche`);return false;}
+  const firma=JSON.stringify(nuove);
+  if((esatti.length||simili.length)&&_catConferma[chiave]!==firma){
+    const righe=[...esatti.map(n=>`«${esc(n)}» compare più volte: le righe diventano una sola categoria e i documenti che usavano i vecchi nomi passano a «${esc(n)}».`),
+      ...simili.map(([a,b])=>`«${esc(a)}» e «${esc(b)}» sono molto simili: controlla che non siano la stessa categoria.`)];
+    openModal2(esatti.length?'Unire le categorie?':'Categorie molto simili',`<div class="note">${svg(IC.tag)}<div>${righe.join('<br>')}</div></div>`,
+      ()=>{_catConferma[chiave]=firma;setTimeout(()=>submitModal(),0);return true;},{submitLabel:esatti.length?'Unisci e salva':'Salva comunque'});
+    return false;
+  }
+  delete _catConferma[chiave];return true;
+}
+/* Banca: unisce la categoria «da» in «a» (movimenti e spese carta passano ad «a») */
+function bancaCatUnisci(da,a){
+  if(!da||!a||da===a)return 0;let n=0;
+  (S.movimentiBanca||[]).forEach(m=>{if(m.categoria===da){m.categoria=a;n++;}});
+  (S.speseCarta||[]).forEach(m=>{if(m.categoria===da){m.categoria=a;n++;}});
+  S.movBancaCategorie=(S.movBancaCategorie||[]).filter(c=>c!==da);if(!S.movBancaCategorie.includes(a))S.movBancaCategorie.push(a);
+  logAction('Categorie banca unite',`«${da}» → «${a}» (${n} movimenti)`);diagLog(`Categorie banca unite: «${da}» → «${a}» (${n} movimenti)`);
+  persist();bancaCatRenderList();render();toast(`«${da}» unita a «${a}»`);return n;
+}
 function bancaCatsSorted(){return [...(S.movBancaCategorie||[])].sort((a,b)=>String(a).localeCompare(String(b),'it',{sensitivity:'base'}));}
 let _bcatDel=-1;
 function bancaCategorieDialog(){
   _bcatDel=-1;
-  const body=`<div class="note">${svg(IC.card)}<div>Aggiungi, rinomina o elimina le categorie dei movimenti. Rinominando una categoria si aggiornano anche i movimenti che la usano.</div></div>
+  const body=`<div class="note">${svg(IC.card)}<div>Aggiungi, rinomina o elimina le categorie dei movimenti. Rinominando una categoria si aggiornano anche i movimenti che la usano. Per unire due categorie, rinomina una con il nome dell'altra.</div></div>
     <div id="bcat-list"></div>
     <div class="section-label">Aggiungi categoria</div>
     <div style="display:flex;gap:8px"><input id="bcat-new" placeholder="Nuova categoria…" style="flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault();bancaCatAdd();}"><button class="btn primary" type="button" onclick="bancaCatAdd()">Aggiungi</button></div>`;
@@ -5752,16 +5805,24 @@ function bancaCatAdd(){
   const inp=document.getElementById('bcat-new');if(!inp)return;
   const v=(inp.value||'').trim();if(!v)return;
   if(!Array.isArray(S.movBancaCategorie))S.movBancaCategorie=[];
-  if(S.movBancaCategorie.some(c=>c.toLowerCase()===v.toLowerCase())){toast('Categoria già presente');return;}
-  S.movBancaCategorie.push(v);inp.value='';persist();bancaCatRenderList();render();toast('Categoria aggiunta');
+  const k=catConfronta(v,S.movBancaCategorie);
+  if(k.uguale){toast(`Esiste già «${k.uguale}»: usa quella`);return;}
+  const aggiungi=()=>{S.movBancaCategorie.push(v);inp.value='';persist();bancaCatRenderList();render();toast('Categoria aggiunta');};
+  if(k.simile){openModal2('Categoria molto simile',`<div class="note">${svg(IC.tag)}<div>Esiste già «${esc(k.simile)}». Vuoi aggiungere comunque «${esc(v)}» come categoria diversa?</div></div>`,()=>{aggiungi();return true;},{submitLabel:'Aggiungi comunque'});return;}
+  aggiungi();
 }
 function bancaCatRename(i,val){
   val=(val||'').trim();const old=S.movBancaCategorie[i];if(old==null)return;
   if(!val){bancaCatRenderList();return;}
   if(val===old)return;
-  if(S.movBancaCategorie.some((c,j)=>j!==i&&c.toLowerCase()===val.toLowerCase())){toast('Nome già usato');bancaCatRenderList();return;}
-  S.movBancaCategorie[i]=val;S.movimentiBanca.forEach(m=>{if(m.categoria===old)m.categoria=val;});
-  persist();bancaCatRenderList();render();toast('Categoria rinominata');
+  const k=catConfronta(val,S.movBancaCategorie,old);
+  if(k.uguale){const u=S.movimentiBanca.filter(m=>m.categoria===old).length;bancaCatRenderList();
+    openModal2('Unire le categorie?',`<div class="note">${svg(IC.tag)}<div>«${esc(val)}» è la categoria «${esc(k.uguale)}», che esiste già. Unendole, ${u} moviment${u===1?'o':'i'} di «${esc(old)}» passa${u===1?'':'no'} a «${esc(k.uguale)}» e «${esc(old)}» viene tolta dall'elenco.</div></div>`,
+      ()=>{bancaCatUnisci(old,k.uguale);return true;},{submitLabel:'Unisci'});return;}
+  const rinomina=()=>{S.movBancaCategorie[i]=val;S.movimentiBanca.forEach(m=>{if(m.categoria===old)m.categoria=val;});(S.speseCarta||[]).forEach(m=>{if(m.categoria===old)m.categoria=val;});
+    persist();bancaCatRenderList();render();toast('Categoria rinominata');};
+  if(k.simile){bancaCatRenderList();openModal2('Categoria molto simile',`<div class="note">${svg(IC.tag)}<div>Esiste già «${esc(k.simile)}». Vuoi rinominare comunque «${esc(old)}» in «${esc(val)}»? Per unirle, scrivi esattamente «${esc(k.simile)}».</div></div>`,()=>{rinomina();return true;},{submitLabel:'Rinomina comunque'});return;}
+  rinomina();
 }
 function bancaCatDelete(i){
   const c=S.movBancaCategorie[i];if(c==null)return;
@@ -6546,7 +6607,9 @@ function openMovimento(id){
 }
 function pnQuickCat(){
   const nome=prompt('Nuova categoria:');
-  if(nome&&nome.trim()){ if(!S.pnCategorie.includes(nome.trim())){S.pnCategorie.push(nome.trim());persist();} const sel=document.getElementById('mv-cat'); if(sel){const o=document.createElement('option');o.textContent=nome.trim();o.selected=true;sel.appendChild(o);} }
+  if(nome&&nome.trim()){ const k=catConfronta(nome.trim(),S.pnCategorie);const scelta=k.uguale||nome.trim();
+    if(k.uguale)toast(`Esiste già «${k.uguale}»: uso quella`);else{S.pnCategorie.push(scelta);persist();}
+    const sel=document.getElementById('mv-cat'); if(sel){const esiste=[...sel.options].find(o=>o.textContent===scelta);if(esiste)esiste.selected=true;else{const o=document.createElement('option');o.textContent=scelta;o.selected=true;sel.appendChild(o);}} }
 }
 function delMovimento(id){confirmDialog('Eliminare questo movimento?','Operazione non reversibile.',()=>{S.primaNota=S.primaNota.filter(x=>x.id!==id);persist();render();toast('Movimento eliminato');});}
 /* Registrazione da fattura incassata */

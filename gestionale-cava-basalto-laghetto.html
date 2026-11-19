@@ -826,7 +826,7 @@ function openDiagnostica(){
 /* ===================== DIAGNOSTICA (Impostazioni) =====================
    Registro degli eventi salvato su questo dispositivo (ultime 300 righe): avvio, errori, sincronizzazione,
    invio degli allegati. In Impostazioni: stato dell'app, controlli sui dati, test delle funzioni, copia del rapporto. */
-const APP_BUILD='19/11/2026 10:40';
+const APP_BUILD='19/11/2026 10:42';
 const DIAG_KEY='cbl_diag_log';
 let diagSyncUltimo='';let sbUltimoOk=0;
 function diagRighe(){try{return JSON.parse(localStorage.getItem(DIAG_KEY)||'[]');}catch(e){return [];}}
@@ -888,7 +888,7 @@ function diagRipristinaCategorie(){
 function diagControlliDati(){
   const out=[];const add=(t,probl,ok)=>out.push({t,ok:!probl.length,d:probl.length?probl.slice(0,6).join(' · ')+(probl.length>6?` … (+${probl.length-6})`:''):(ok||'nessun problema')});
   [['ddt','DDT'],['fatture','Fatture'],['contratti','Contratti'],['contrattiRA','Contratti R.A.']].forEach(([c,l])=>{
-    const m={};(S[c]||[]).forEach(x=>{if(x&&x.numero!==''&&x.numero!=null&&x.anno){const k=x.numero+'/'+x.anno;m[k]=(m[k]||0)+1;}});
+    const m={};(S[c]||[]).forEach(x=>{if(x&&Number(x.numero)>0&&x.anno){const k=x.numero+'/'+x.anno;m[k]=(m[k]||0)+1;}});
     add(`Numerazione ${l}: numeri doppi`,Object.keys(m).filter(k=>m[k]>1).map(k=>`n. ${k} (×${m[k]})`));
   });
   const cli=new Set((S.clienti||[]).map(c=>c.id));

@@ -826,7 +826,7 @@ function openDiagnostica(){
 /* ===================== DIAGNOSTICA (Impostazioni) =====================
    Registro degli eventi salvato su questo dispositivo (ultime 300 righe): avvio, errori, sincronizzazione,
    invio degli allegati. In Impostazioni: stato dell'app, controlli sui dati, test delle funzioni, copia del rapporto. */
-const APP_BUILD='19/11/2026 10:42';
+const APP_BUILD='19/11/2026 10:47';
 const DIAG_KEY='cbl_diag_log';
 let diagSyncUltimo='';let sbUltimoOk=0;
 function diagRighe(){try{return JSON.parse(localStorage.getItem(DIAG_KEY)||'[]');}catch(e){return [];}}
@@ -8508,6 +8508,7 @@ const SB_ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJl
 const SB_ARRAYS=['clienti','destinazioni','materiali','unitaMisura','mezzi','causali','aspetti','listini','contratti','contrattoTipi','compilatori','modalitaPagamento','ddt','fatture','sicurezza','sicCategorie','docamm','scadenze','scadCategorie','contrattiRA','raDocumenti','primaNota','pnCategorie','fattureEl','conferimenti','appLog','rifornimenti','movimentiBanca','movBancaCategorie','speseCarta'];
 /* Gli elenchi di categorie sono elenchi di testi (senza id): si salvano come righe «meta», altrimenti non arriverebbero mai su Supabase */
 const SB_META=['azienda','settings','counters','movBancaCategorie','sicCategorie','scadCategorie','pnCategorie'];
+const SB_META_LABEL={azienda:'Dati azienda',settings:'Impostazioni',counters:'Numerazione',movBancaCategorie:'Categorie della banca',sicCategorie:'Categorie della sicurezza',scadCategorie:'Categorie delle scadenze',pnCategorie:'Categorie della prima nota'};
 let sbClient=null, sbUser=null, sbChannel=null, sbSnap={}, sbPushTimer=null, sbRenderTimer=null, sbState='idle', sbOffline=false;
 let sbBooting=false;
 function SB_ON(){try{return localStorage.getItem('cbl_backend')!=='local';}catch(e){return true;}}
@@ -8660,10 +8661,12 @@ async function sbReconcile(){
   // rilevo conflitti su meta cambiati
   SB_META.forEach(k=>{ if(!changed.meta[k])return;
     const sr=server['meta::'+k]; const baseJson=sbSnap['meta:'+k];
+    // mai sincronizzato su questo dispositivo (es. elenchi di categorie appena aggiunti): vale la versione online se c'è, altrimenti si invia la nostra
+    if(baseJson===undefined){ if(sr&&!sr.deleted)sbApplyRow(sr); return; }
     const serverJson=sr?JSON.stringify(sr.deleted?{}:sr.data):JSON.stringify({});
     const localJson=JSON.stringify(S[k]||{});
     if(serverJson!==baseJson && serverJson!==localJson)
-      conflicts.push({coll:'meta',id:k,mine:S[k]||{},theirs:sr&&!sr.deleted?sr.data:{},label:'Impostazioni: '+k});
+      conflicts.push({coll:'meta',id:k,mine:S[k]||{},theirs:sr&&!sr.deleted?sr.data:{},label:SB_META_LABEL[k]||('Impostazioni: '+k)});
   });
   // rilevo conflitti sui record (array) cambiati
   SB_ARRAYS.forEach(c=>{ const ourSet=changed.arr[c]; if(!ourSet)return;
@@ -8727,7 +8730,7 @@ async function sbApplyConflictChoices(){
   conflicts.forEach((k,i)=>{
     const sel=((document.querySelector('input[name="cf'+i+'"]:checked')||{}).value)||'mine';
     if(sel!=='theirs')return; // 'mine' resta com'è e verrà inviato dal push
-    if(k.coll==='meta'){ S[k.id]=k.theirs||{}; sbSnap['meta:'+k.id]=JSON.stringify(S[k.id]||{}); return; }
+    if(k.coll==='meta'){ if(Array.isArray(S[k.id])&&!Array.isArray(k.theirs))return; S[k.id]=k.theirs||{}; sbSnap['meta:'+k.id]=JSON.stringify(S[k.id]||{}); return; }
     const arr=S[k.coll]||(S[k.coll]=[]); const idx=arr.findIndex(x=>String(x.id)===String(k.id));
     if(k.theirs===null){ if(idx>-1)arr.splice(idx,1); (sbSnap[k.coll]=sbSnap[k.coll]||{}); delete sbSnap[k.coll][k.id]; }
     else { if(idx>-1)arr[idx]=k.theirs; else arr.push(k.theirs); (sbSnap[k.coll]=sbSnap[k.coll]||{})[k.id]=JSON.stringify(k.theirs); }

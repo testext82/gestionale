@@ -55,6 +55,28 @@
   .nav-item{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:none;border:0;color:#c2ccda;padding:8px 12px;border-radius:6px;margin:1px 0;font-size:13.5px}
   .nav-item:hover{background:rgba(255,255,255,.06);color:#fff}
   .nav-item.active{background:var(--accent);color:#fff;font-weight:600}
+  .nav-item.nav-drop{box-shadow:inset 0 2px 0 #f5b26b}
+  .nav-item.nav-dragging{opacity:.45}
+  .clock,.weather{cursor:pointer;border-radius:8px;padding:2px 6px}
+  .clock:hover,.weather:hover{background:rgba(127,127,127,.12)}
+  .cal-head{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+  .cal-mese{font-size:16px;min-width:160px;text-align:center}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+  .cal-g{font-size:11px;text-align:center;color:var(--muted);font-weight:700;padding:4px 0}
+  .cal-g.festa{color:var(--danger)}
+  .cal-c{position:relative;height:44px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+  .cal-c.vuota{border:0;background:none;cursor:default}
+  .cal-c.festa{color:var(--danger)}
+  .cal-c.oggi{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+  .cal-c.sel{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .cal-c:not(.vuota):not(.sel):hover{background:var(--bg)}
+  .cal-dot{position:absolute;bottom:5px;left:50%;transform:translateX(-50%);width:6px;height:6px;border-radius:50%;background:var(--warn)}
+  .cal-c.sel .cal-dot{background:#fff}
+  .cal-det{margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+  .mt-ora-att{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  .mt-ore{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}
+  .mt-ora{min-width:58px;text-align:center;border:1px solid var(--line);border-radius:8px;padding:6px 4px;background:var(--surface)}
+  .mt-lontano td{opacity:.75}
   .nav-item .ico{width:17px;height:17px;flex:none;opacity:.9}
   .nav-item .badge{margin-left:auto;background:rgba(255,255,255,.14);color:#dfe6ef;font-size:11px;padding:1px 7px;border-radius:20px;font-weight:600}
   .nav-item.active .badge{background:rgba(255,255,255,.22);color:#fff}
@@ -467,8 +489,8 @@
         <input id="gsearch-input" placeholder="Cerca ovunque…" autocomplete="off" oninput="globalSearch(this.value)" onfocus="globalSearch(this.value)">
         <div class="gsearch-res" id="gsearch-res"></div>
       </div>
-      <div class="weather" id="weather" title="Meteo Monte Compatri"></div>
-      <div class="clock" id="clock"></div>
+      <div class="weather" id="weather" title="Meteo Monte Compatri · clic per le previsioni" onclick="openMeteo()"></div>
+      <div class="clock" id="clock" title="Apri il calendario" onclick="openCalendario()"></div>
       <button class="icon-btn" id="theme-btn" title="Risparmio energetico" onclick="toggleTheme()"></button>
       <div id="page-actions"></div>
     </div>
@@ -801,6 +823,247 @@ function openDiagnostica(){
     <div class="att-list">${res.map(r=>`<div class="att"><span class="ic" style="color:${r.pass?'var(--ok)':'var(--danger)'}">${svg(r.pass?IC.dash:IC.trash,2)}</span><span style="flex:1">${esc(r.n)}</span><span class="pill ${r.pass?'ok':'danger'}">${r.pass?'OK':'FALLITO'}</span></div>`).join('')}</div>`;
   openModal('Diagnostica',body,()=>true,{wide:true,submitLabel:'Chiudi'});
 }
+/* ===================== DIAGNOSTICA (Impostazioni) =====================
+   Registro degli eventi salvato su questo dispositivo (ultime 300 righe): avvio, errori, sincronizzazione,
+   invio degli allegati. In Impostazioni: stato dell'app, controlli sui dati, test delle funzioni, copia del rapporto. */
+const APP_BUILD='19/11/2026 10:40';
+const DIAG_KEY='cbl_diag_log';
+let diagSyncUltimo='';let sbUltimoOk=0;
+function diagRighe(){try{return JSON.parse(localStorage.getItem(DIAG_KEY)||'[]');}catch(e){return [];}}
+function diagLog(msg){
+  try{
+    const d=new Date();const ts=d.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit'})+' '+d.toLocaleTimeString('it-IT',{hour12:false});
+    let r=diagRighe();r.push(ts+' · '+String(msg).replace(/\s+/g,' ').slice(0,400));if(r.length>300)r=r.slice(-300);
+    localStorage.setItem(DIAG_KEY,JSON.stringify(r));
+    const box=document.getElementById('diag-log');if(box)box.textContent=r.slice().reverse().join('\n');
+  }catch(e){}
+}
+window.addEventListener('error',e=>{diagLog('ERRORE: '+(e.message||'sconosciuto')+(e.filename?' ('+String(e.filename).split('/').pop()+':'+e.lineno+')':''));});
+window.addEventListener('unhandledrejection',e=>{const r=e.reason;diagLog('ERRORE (operazione asincrona): '+((r&&(r.message||r.error_description))||String(r)));});
+window.addEventListener('online',()=>diagLog('Connessione: tornata online'));
+window.addEventListener('offline',()=>diagLog('Connessione: offline'));
+function diagSync(s){
+  if(s==='ok')sbUltimoOk=Date.now();
+  if(s==='sync'||s==='idle')return;
+  if(s===diagSyncUltimo)return;
+  if(s==='ok'&&!diagSyncUltimo){diagSyncUltimo='ok';return;}
+  diagLog(s==='ok'?'Sincronizzazione: ripristinata':(s==='offline'?'Sincronizzazione: offline, modifiche in attesa ('+(typeof sbPendingCount==='function'?sbPendingCount():'?')+')':'Sincronizzazione: ERRORE'));
+  diagSyncUltimo=s;
+}
+function diagAmbiente(){
+  const ua=navigator.userAgent||'';
+  const browser=/Edg\//.test(ua)?'Edge':/Chrome\//.test(ua)?'Chrome':/Firefox\//.test(ua)?'Firefox':/Safari\//.test(ua)?'Safari':'altro';
+  const so=/iPhone|iPad/.test(ua)?'iOS':/Android/.test(ua)?'Android':/Windows/.test(ua)?'Windows':/Mac OS/.test(ua)?'macOS':/Linux/.test(ua)?'Linux':'altro';
+  const home=(window.matchMedia&&matchMedia('(display-mode: standalone)').matches)||navigator.standalone;
+  const st={sync:'in corso',ok:'sincronizzato',err:'ERRORE',idle:'in attesa',offline:'offline'};
+  const n=SB_ARRAYS.reduce((t,c)=>t+((S[c]||[]).length),0);
+  let kb=0;try{kb=Math.round(JSON.stringify(S).length/1024);}catch(e){}
+  const a=attStats();
+  return [
+    ['Versione',APP_BUILD],
+    ['Dispositivo',`${browser} su ${so} · aperta ${home?'dalla schermata Home':'nel browser'} · schermo ${screen.width}×${screen.height}`],
+    ['Connessione',navigator.onLine?'online':'OFFLINE'],
+    ['Archivio dati',SB_ON()?'Supabase (multi-operatore)':(typeof DBX!=='undefined'&&DBX.connected()?'Dropbox':'solo questo browser')],
+    ['Operatore',SB_ON()?(sbUser?sbUser.email:'non collegato'):'—'],
+    ['Sincronizzazione',SB_ON()?`${st[sbState]||sbState}${sbOffline?' (offline)':''} · modifiche da inviare: ${sbPendingCount()}${sbUltimoOk?' · ultima riuscita alle '+new Date(sbUltimoOk).toLocaleTimeString('it-IT',{hour12:false}):''}`:'—'],
+    ['Dati',`${n} record · ${kb} KB`],
+    ['Allegati',`${a.count} file · ${fmtBytes(a.bytes)} · in attesa di invio: ${attPending().length}`],
+  ];
+}
+/* Categorie scritte su movimenti, documenti e scadenze ma non più presenti nel loro elenco */
+const DIAG_CATEGORIE=[['movBancaCategorie','Banca',['movimentiBanca','speseCarta']],['sicCategorie','Sicurezza',['sicurezza']],['scadCategorie','Scadenze',['scadenze']],['pnCategorie','Prima nota',['primaNota']]];
+function diagCategorieMancanti(){
+  return DIAG_CATEGORIE.map(([k,label,fonti])=>{const el=new Set((S[k]||[]).map(x=>String(x).toLowerCase()));const usate=new Map();
+    fonti.forEach(f=>(S[f]||[]).forEach(r=>{const c=r&&typeof r.categoria==='string'?r.categoria.trim():'';if(c&&!el.has(c.toLowerCase())&&!usate.has(c.toLowerCase()))usate.set(c.toLowerCase(),c);}));
+    return {k,label,mancanti:[...usate.values()].sort((a,b)=>a.localeCompare(b,'it'))};}).filter(x=>x.mancanti.length);
+}
+function diagRipristinaCategorie(){
+  const cm=diagCategorieMancanti();if(!cm.length)return;
+  confirmDialog('Rimettere le categorie nell\'elenco?',cm.map(x=>`${x.label}: ${x.mancanti.join(', ')}`).join(' — ')+'. Vengono solo aggiunte in fondo all\'elenco: nessuna categoria e nessun movimento viene cambiato o cancellato.',()=>{
+    cm.forEach(x=>{if(!Array.isArray(S[x.k]))S[x.k]=[];S[x.k].push(...x.mancanti);});
+    diagLog('Categorie rimesse negli elenchi: '+cm.map(x=>x.label+' '+x.mancanti.length).join(', '));logAction('Categorie ripristinate',cm.map(x=>x.label+' '+x.mancanti.length).join(', '));
+    persist();render();toast('Categorie rimesse negli elenchi');},'Rimetti nell\'elenco');
+}
+/* Controlli sui dati reali (sola lettura) */
+function diagControlliDati(){
+  const out=[];const add=(t,probl,ok)=>out.push({t,ok:!probl.length,d:probl.length?probl.slice(0,6).join(' · ')+(probl.length>6?` … (+${probl.length-6})`:''):(ok||'nessun problema')});
+  [['ddt','DDT'],['fatture','Fatture'],['contratti','Contratti'],['contrattiRA','Contratti R.A.']].forEach(([c,l])=>{
+    const m={};(S[c]||[]).forEach(x=>{if(x&&x.numero!==''&&x.numero!=null&&x.anno){const k=x.numero+'/'+x.anno;m[k]=(m[k]||0)+1;}});
+    add(`Numerazione ${l}: numeri doppi`,Object.keys(m).filter(k=>m[k]>1).map(k=>`n. ${k} (×${m[k]})`));
+  });
+  const cli=new Set((S.clienti||[]).map(c=>c.id));
+  add('DDT e fatture con cliente inesistente',[...(S.ddt||[]).filter(d=>d.clienteId&&!cli.has(d.clienteId)).map(d=>`DDT ${d.numero}/${d.anno}`),
+    ...(S.fatture||[]).filter(f=>f.clienteId&&!cli.has(f.clienteId)).map(f=>`fattura ${f.numero}/${f.anno}`)]);
+  const ids=[];SB_ARRAYS.filter(c=>!SB_META.includes(c)).forEach(c=>{const v=new Set();let senza=0;(S[c]||[]).forEach(x=>{if(!x||typeof x!=='object'||x.id==null){senza++;return;}const k=String(x.id);if(v.has(k))ids.push(`${c}: id doppio ${k}`);v.add(k);});if(senza)ids.push(`${c}: ${senza} senza id`);});
+  add('Record senza identificativo o doppi (sincronizzazione)',ids);
+  const cm=diagCategorieMancanti();
+  out.push({t:'Categorie usate nei documenti ma assenti dall\'elenco',ok:!cm.length,
+    d:cm.length?cm.map(x=>`${x.label}: ${x.mancanti.length} (${x.mancanti.slice(0,4).join(', ')}${x.mancanti.length>4?'…':''})`).join(' · '):'nessun problema',
+    az:cm.length?`<button class="btn sm" onclick="diagRipristinaCategorie()">Rimetti nell'elenco</button>`:''});
+  const pend=attPending();add('Allegati non ancora inviati al cloud',pend.length?[`${pend.length} file in attesa`]:[]);
+  if(SB_ON())add('Modifiche non ancora sincronizzate',sbPendingCount()&&sbState!=='sync'?[`${sbPendingCount()} da inviare`]:[]);
+  return out;
+}
+function diagRapporto(){
+  const t=runSelfTests(),ok=t.filter(r=>r.pass).length;
+  return ['RAPPORTO DIAGNOSTICO — Gestionale Cava Basalto Laghetto',new Date().toLocaleString('it-IT'),'',
+    ...diagAmbiente().map(([k,v])=>k+': '+v),'','CONTROLLI SUI DATI',
+    ...diagControlliDati().map(c=>(c.ok?'OK  ':'!!  ')+c.t+' — '+c.d),'',`TEST DELLE FUNZIONI: ${ok}/${t.length}`,
+    ...t.filter(r=>!r.pass).map(r=>'KO  '+r.n),'','REGISTRO (ultimi eventi, dal più recente)',...diagRighe().slice(-120).reverse()].join('\n');
+}
+async function diagCopia(btn){
+  const txt=diagRapporto();
+  try{await navigator.clipboard.writeText(txt);}
+  catch(e){const ta=document.createElement('textarea');ta.value=txt;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();try{document.execCommand('copy');}catch(_){}ta.remove();}
+  if(btn){const t=btn.innerHTML;btn.textContent='Copiato ✓';setTimeout(()=>{btn.innerHTML=t;},1600);}
+  toast('Rapporto copiato: puoi incollarlo in un messaggio');
+}
+function diagSvuota(){try{localStorage.removeItem(DIAG_KEY);}catch(e){}diagLog('Registro svuotato');render();}
+async function diagSpazio(){
+  const el=document.getElementById('diag-spazio');if(!el)return;
+  try{const e=await navigator.storage.estimate();el.textContent=`${fmtBytes(e.usage)} usati su ${fmtBytes(e.quota)} disponibili nel browser`;}catch(e){el.textContent='non disponibile';}
+}
+function diagCardHtml(){
+  const ctrl=diagControlliDati(),bad=ctrl.filter(c=>!c.ok).length;
+  setTimeout(diagSpazio,0);
+  return `<div class="card" style="margin-top:18px">
+    <div class="card-head"><h2>Diagnostica</h2><div style="flex:1"></div>${bad?`<span class="pill warn">${bad} da controllare</span>`:'<span class="pill ok">Tutto regolare</span>'}</div>
+    <div style="padding:16px 18px;display:flex;flex-direction:column;gap:14px">
+      <p class="sub" style="margin:0">Serve a capire se qualcosa non va: stato dell'app e della sincronizzazione, controlli sui dati (solo lettura) e registro degli eventi di questo dispositivo. Se c'è un problema, premi <b>Copia rapporto</b> e incollalo nel messaggio.</p>
+      <div class="info-rows">${diagAmbiente().map(([k,v])=>`<div class="info-row"><span>${esc(k)}</span><span class="strong" style="text-align:right">${esc(v)}</span></div>`).join('')}
+        <div class="info-row"><span>Spazio del browser</span><span class="strong" id="diag-spazio">…</span></div></div>
+      <div><div class="section-label" style="margin:0 0 6px">Controlli sui dati</div>
+        <div class="att-list">${ctrl.map(c=>`<div class="att"><span class="pill ${c.ok?'ok':'warn'}" style="min-width:34px;text-align:center">${c.ok?'OK':'!'}</span><span style="flex:1">${esc(c.t)}<div class="sub">${esc(c.d)}</div></span>${c.az||''}</div>`).join('')}</div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" onclick="openDiagnostica()">${svg(IC.shield)} Test delle funzioni</button>
+        <button class="btn primary" onclick="diagCopia(this)">${svg(IC.copy)} Copia rapporto</button>
+        <button class="btn ghost" onclick="diagSvuota()">Svuota registro</button>
+      </div>
+      <div><div class="section-label" style="margin:0 0 6px">Registro eventi (dal più recente)</div>
+        <pre id="diag-log" style="margin:0;max-height:260px;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;font-size:11.5px;line-height:1.45;white-space:pre-wrap">${esc(diagRighe().slice().reverse().join('\n')||'Nessun evento registrato.')}</pre></div>
+    </div></div>`;
+}
+
+/* ===================== MENU LATERALE ORDINABILE =====================
+   Le voci di «Operativo» e «Anagrafiche» si spostano trascinandole nel menu o con le frecce in Impostazioni.
+   L'ordine è salvato in S.settings.navOrdine (uguale su tutti i dispositivi). */
+const NAV_ORDINABILI=['Operativo','Anagrafiche'];
+let navDrag=null;
+function navOrdinata(){
+  const ord=((S.settings||{}).navOrdine)||{};const out=[];let grp=null,buf=[];
+  const flush=()=>{const o=grp&&NAV_ORDINABILI.includes(grp)&&ord[grp];
+    if(o){const base=buf.slice();const pos=n=>{const i=o.indexOf(n.id);return i<0?1000+base.indexOf(n):i;};buf.sort((a,b)=>pos(a)-pos(b));}
+    out.push(...buf);buf=[];};
+  NAV.forEach(n=>{if(n.group){flush();out.push(n);grp=n.group;}else if(!grp)out.push(n);else buf.push(n);});
+  flush();return out;
+}
+function navGruppoIds(grp){const ids=[];let g=null;navOrdinata().forEach(n=>{if(n.group)g=n.group;else if(g===grp)ids.push(n.id);});return ids;}
+function navSalva(grp,ids){S.settings.navOrdine={...(S.settings.navOrdine||{}),[grp]:ids};persist();renderNav();if(current==='impostazioni')render();}
+function navSposta(grp,id,target){const ids=navGruppoIds(grp);const from=ids.indexOf(id),to=ids.indexOf(target);if(from<0||to<0||from===to)return;ids.splice(from,1);ids.splice(to,0,id);navSalva(grp,ids);}
+function navSu(grp,id,dir){const ids=navGruppoIds(grp);const i=ids.indexOf(id),j=i+dir;if(i<0||j<0||j>=ids.length)return;[ids[i],ids[j]]=[ids[j],ids[i]];navSalva(grp,ids);}
+function navRipristina(){const o={...(S.settings.navOrdine||{})};NAV_ORDINABILI.forEach(g=>delete o[g]);S.settings.navOrdine=o;persist();renderNav();render();toast('Ordine originale del menu ripristinato');}
+function navDragStart(e,id,grp){navDrag={id,grp};try{e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',id);}catch(_){}e.currentTarget.classList.add('nav-dragging');}
+function navDragEnd(e){e.currentTarget.classList.remove('nav-dragging');document.querySelectorAll('.nav-drop').forEach(x=>x.classList.remove('nav-drop'));navDrag=null;}
+function navDragOver(e,grp){if(navDrag&&navDrag.grp===grp){e.preventDefault();try{e.dataTransfer.dropEffect='move';}catch(_){}e.currentTarget.classList.add('nav-drop');}}
+function navDragLeave(e){e.currentTarget.classList.remove('nav-drop');}
+function navDrop(e,id,grp){e.preventDefault();e.currentTarget.classList.remove('nav-drop');if(!navDrag||navDrag.grp!==grp)return;const d=navDrag.id;navDrag=null;if(d!==id){navSposta(grp,d,id);toast('Menu riordinato');}}
+function navCardHtml(){
+  const nav=navOrdinata();let g=null;const gruppi={};
+  nav.forEach(n=>{if(n.group){g=n.group;return;}if(NAV_ORDINABILI.includes(g)&&!(n.hidden&&n.hidden()))(gruppi[g]=gruppi[g]||[]).push(n);});
+  const pers=NAV_ORDINABILI.some(x=>((S.settings.navOrdine||{})[x]||[]).length);
+  return `<div class="card" style="margin-top:18px">
+    <div class="card-head"><h2>Menu laterale</h2><div style="flex:1"></div>${pers?`<button class="btn sm ghost" onclick="navRipristina()">Ripristina ordine originale</button>`:''}</div>
+    <div style="padding:14px 18px">
+      <p class="sub" style="margin:0 0 12px">Sposta le voci con le frecce, oppure trascinale direttamente nel menu a sinistra (sul computer). L'ordine vale su tutti i dispositivi.</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px">
+      ${NAV_ORDINABILI.map(gr=>`<div><div class="section-label" style="margin:0 0 6px">${gr}</div><div class="att-list">${(gruppi[gr]||[]).map((n,i,a)=>`<div class="att">
+        <span class="ic">${svg(IC[n.ico],1.9)}</span><span style="flex:1">${esc(n.label)}</span>
+        <button class="icon-btn sm" title="Sposta su" ${i===0?'disabled':''} onclick="navSu('${gr}','${n.id}',-1)">↑</button>
+        <button class="icon-btn sm" title="Sposta giù" ${i===a.length-1?'disabled':''} onclick="navSu('${gr}','${n.id}',1)">↓</button></div>`).join('')}</div></div>`).join('')}
+      </div></div></div>`;
+}
+
+/* ===================== CALENDARIO (clic su data e ora) ===================== */
+let calMese='',calSel='';
+function calPasqua(y){const a=y%19,b=Math.floor(y/100),c=y%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451),mese=Math.floor((h+l-7*m+114)/31),giorno=((h+l-7*m+114)%31)+1;return [mese,giorno];}
+function calFeste(y){
+  const f={},p2=n=>String(n).padStart(2,'0'),add=(m,d,n)=>{f[`${y}-${p2(m)}-${p2(d)}`]=n;};
+  add(1,1,'Capodanno');add(1,6,'Epifania');add(4,25,'Festa della Liberazione');add(5,1,'Festa del Lavoro');add(6,2,'Festa della Repubblica');
+  add(6,29,'Santi Pietro e Paolo (patroni di Roma)');add(8,15,'Ferragosto');add(11,1,'Ognissanti');add(12,8,'Immacolata Concezione');add(12,25,'Natale');add(12,26,'Santo Stefano');
+  const [pm,pd]=calPasqua(y);add(pm,pd,'Pasqua');const lu=new Date(Date.UTC(y,pm-1,pd+1));add(lu.getUTCMonth()+1,lu.getUTCDate(),"Lunedì dell'Angelo (Pasquetta)");
+  return f;
+}
+function calSettimana(iso){const d=new Date(iso+'T00:00:00Z');const g=(d.getUTCDay()+6)%7;d.setUTCDate(d.getUTCDate()-g+3);const f=new Date(Date.UTC(d.getUTCFullYear(),0,4));return 1+Math.round(((d-f)/86400000-3+((f.getUTCDay()+6)%7))/7);}
+function calScadenze(){const m={};try{scadenzeUnificate(null).forEach(s=>{if(s.data)(m[String(s.data).slice(0,10)]=m[String(s.data).slice(0,10)]||[]).push(s);});}catch(e){}return m;}
+function calHtml(){
+  const oggi=today();if(!calMese)calMese=oggi.slice(0,7);if(!calSel)calSel=oggi;
+  const [y,m]=calMese.split('-').map(Number);const feste={...calFeste(y),...calFeste(y-1),...calFeste(y+1)};const sc=calScadenze();
+  const primo=new Date(Date.UTC(y,m-1,1)),off=(primo.getUTCDay()+6)%7,giorni=new Date(Date.UTC(y,m,0)).getUTCDate();
+  const nomeMese=primo.toLocaleDateString('it-IT',{month:'long',year:'numeric',timeZone:'UTC'});
+  const celle=[];for(let i=0;i<off;i++)celle.push('<div class="cal-c vuota"></div>');
+  for(let d=1;d<=giorni;d++){const iso=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;const dow=(off+d-1)%7;const n=(sc[iso]||[]).length;
+    celle.push(`<button type="button" class="cal-c${iso===oggi?' oggi':''}${iso===calSel?' sel':''}${dow>4||feste[iso]?' festa':''}" onclick="calScegli('${iso}')" title="${esc([feste[iso],n?n+(n>1?' scadenze':' scadenza'):''].filter(Boolean).join(' · '))}">
+      <span>${d}</span>${n?'<i class="cal-dot"></i>':''}</button>`);}
+  const ds=new Date(calSel+'T00:00:00Z').toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long',year:'numeric',timeZone:'UTC'});
+  const lista=sc[calSel]||[];
+  return `<div class="cal-head"><button type="button" class="icon-btn sm" onclick="calVai(-1)" title="Mese precedente">‹</button>
+      <b class="cal-mese">${esc(nomeMese.charAt(0).toUpperCase()+nomeMese.slice(1))}</b>
+      <button type="button" class="icon-btn sm" onclick="calVai(1)" title="Mese successivo">›</button>
+      <div style="flex:1"></div><button type="button" class="btn sm" onclick="calOggi()">Oggi</button></div>
+    <div class="cal-grid">${['Lun','Mar','Mer','Gio','Ven','Sab','Dom'].map((g,i)=>`<div class="cal-g${i>4?' festa':''}">${g}</div>`).join('')}${celle.join('')}</div>
+    <div class="cal-det"><div class="strong">${esc(ds.charAt(0).toUpperCase()+ds.slice(1))} <span class="sub">· settimana ${calSettimana(calSel)}</span></div>
+      ${feste[calSel]?`<div style="color:var(--danger);font-weight:600;margin-top:4px">${esc(feste[calSel])}</div>`:''}
+      ${lista.length?`<div class="att-list" style="margin-top:8px">${lista.map(s=>`<div class="att" style="cursor:pointer" onclick="closeModal();setTimeout(()=>{${s.azione||''}},0)"><span class="pill ${s.pill||'grey'}">${esc(s.tipo)}</span><span style="flex:1">${esc(s.titolo)}${s.sotto?`<div class="sub">${esc(s.sotto)}</div>`:''}</span>${s.importo?`<span class="strong">€ ${eur(s.importo)}</span>`:''}</div>`).join('')}</div>`
+        :'<div class="sub" style="margin-top:6px">Nessuna scadenza in questo giorno.</div>'}</div>
+    <div class="sub" style="margin-top:8px">I giorni con il pallino hanno scadenze (fatture da incassare, scadenze, documenti di sicurezza, contratti). Domeniche, sabati e festivi in rosso.</div>`;
+}
+function calRidisegna(){const b=document.getElementById('cal-box');if(b)b.innerHTML=calHtml();}
+function calVai(n){const [y,m]=calMese.split('-').map(Number);const d=new Date(Date.UTC(y,m-1+n,1));calMese=d.toISOString().slice(0,7);calRidisegna();}
+function calOggi(){calMese=today().slice(0,7);calSel=today();calRidisegna();}
+function calScegli(iso){calSel=iso;calRidisegna();}
+function openCalendario(){calMese=today().slice(0,7);calSel=today();openModal('Calendario',`<div id="cal-box" class="cal">${calHtml()}</div>`,()=>true,{submitLabel:'Chiudi'});}
+
+/* ===================== PREVISIONI METEO (clic sul meteo) — Open-Meteo, Monte Compatri ===================== */
+let meteoDati=null,meteoTutti=false;
+async function openMeteo(){
+  meteoTutti=false;
+  openModal(`Meteo · ${METEO_LUOGO}`,`<div id="meteo-box"><div class="sub">Caricamento delle previsioni…</div></div>`,()=>true,{wide:true,submitLabel:'Chiudi'});
+  try{
+    const u='https://api.open-meteo.com/v1/forecast?latitude='+METEO_LAT+'&longitude='+METEO_LON
+      +'&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,wind_gusts_10m,precipitation'
+      +'&hourly=temperature_2m,precipitation_probability,weather_code'
+      +'&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max,sunrise,sunset'
+      +'&timezone=Europe%2FRome&forecast_days=14';
+    const r=await fetch(u);if(!r.ok)throw new Error('HTTP '+r.status);
+    meteoDati=await r.json();meteoRidisegna();
+  }catch(e){diagLog('Meteo: previsioni non disponibili ('+(e.message||e)+')');const b=document.getElementById('meteo-box');if(b)b.innerHTML='<div class="note">Previsioni non disponibili in questo momento: controlla la connessione e riprova.</div>';}
+}
+function meteoRidisegna(){
+  const b=document.getElementById('meteo-box');const j=meteoDati;if(!b||!j)return;
+  const R=Math.round,cu=j.current||{},dd=j.daily||{},hh=j.hourly||{};
+  const [ico,desc]=wmoInfo(cu.weather_code);
+  const ora=new Date();const idx0=(hh.time||[]).findIndex(t=>new Date(t)>=new Date(ora.getTime()-3600000));
+  const ore=(hh.time||[]).slice(Math.max(0,idx0),Math.max(0,idx0)+12).map((t,i)=>{const k=Math.max(0,idx0)+i;const [ic]=wmoInfo(hh.weather_code[k]);
+    return `<div class="mt-ora"><div class="sub">${t.slice(11,16)}</div><div style="font-size:20px">${ic}</div><div class="strong">${R(hh.temperature_2m[k])}°</div><div class="sub">💧${hh.precipitation_probability?hh.precipitation_probability[k]:0}%</div></div>`;}).join('');
+  const nG=meteoTutti?(dd.time||[]).length:Math.min(7,(dd.time||[]).length);
+  const giorno=(t,i)=>{if(i===0)return 'Oggi';if(i===1)return 'Domani';const s=new Date(t+'T12:00:00').toLocaleDateString('it-IT',{weekday:'short',day:'numeric',month:'numeric'});return s.charAt(0).toUpperCase()+s.slice(1);};
+  const righe=(dd.time||[]).slice(0,nG).map((t,i)=>{const [ic,ds]=wmoInfo(dd.weather_code[i]);const pp=dd.precipitation_probability_max?dd.precipitation_probability_max[i]:null;const mm=dd.precipitation_sum?dd.precipitation_sum[i]:0;
+    return `<tr${i>=7?' class="mt-lontano"':''}><td class="strong">${giorno(t,i)}</td><td><span style="font-size:20px;vertical-align:middle">${ic}</span> ${esc(ds)}</td>
+      <td style="text-align:right"><span class="strong">${R(dd.temperature_2m_max[i])}°</span> <span class="sub">/ ${R(dd.temperature_2m_min[i])}°</span></td>
+      <td style="text-align:right">${pp!=null?pp+'%':'—'}${mm?` <span class="sub">· ${String(Math.round(mm*10)/10).replace('.',',')} mm</span>`:''}</td>
+      <td style="text-align:right">${R(dd.wind_speed_10m_max[i])} <span class="sub">km/h · raffiche ${R(dd.wind_gusts_10m_max[i])}</span></td>
+      <td class="sub" style="text-align:right">${(dd.sunrise&&dd.sunrise[i]||'').slice(11,16)} – ${(dd.sunset&&dd.sunset[i]||'').slice(11,16)}</td></tr>`;}).join('');
+  b.innerHTML=`<div class="mt-ora-att">
+      <div style="font-size:44px;line-height:1">${ico}</div>
+      <div><div style="font-size:30px;font-weight:800;line-height:1">${R(cu.temperature_2m)}°</div><div class="strong">${esc(desc)}</div></div>
+      <div class="sub" style="line-height:1.6">Percepita ${R(cu.apparent_temperature)}° · Umidità ${R(cu.relative_humidity_2m)}%<br>Vento ${R(cu.wind_speed_10m)} km/h · raffiche ${R(cu.wind_gusts_10m)} km/h${cu.precipitation?` · pioggia ${cu.precipitation} mm`:''}</div></div>
+    <div class="section-label" style="margin:14px 0 6px">Prossime ore</div><div class="mt-ore">${ore}</div>
+    <div class="section-label" style="margin:14px 0 6px">Prossimi giorni</div>
+    <div style="overflow-x:auto"><table><thead><tr><th>Giorno</th><th>Tempo</th><th style="text-align:right">Max / min</th><th style="text-align:right">Pioggia</th><th style="text-align:right">Vento</th><th style="text-align:right">Sole</th></tr></thead><tbody>${righe}</tbody></table></div>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap">
+      ${(dd.time||[]).length>7?`<button type="button" class="btn sm" onclick="meteoTutti=!meteoTutti;meteoRidisegna()">${meteoTutti?'Mostra 7 giorni':'Mostra 14 giorni'}</button>`:''}
+      <span class="sub">${meteoTutti?'Oltre i 7 giorni le previsioni sono meno affidabili. ':''}Previsioni per ${METEO_LUOGO} · dati <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a></span></div>`;
+}
 const dmy=s=>{if(!s)return'';const p=String(s).slice(0,10).split('-');return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:s;};
 const dmyhm=s=>{if(!s)return'';const[d,t]=String(s).split('T');return dmy(d)+(t?` ${t.slice(0,5)}`:'');};
 const addDays=(iso,n)=>{if(!iso)return'';const d=new Date(iso);if(isNaN(d))return'';d.setDate(d.getDate()+parseInt(n||0));return d.toISOString().slice(0,10);};
@@ -983,7 +1246,7 @@ const NAV=[
   {id:'sicurezza',label:'Sicurezza e scadenze',ico:'shield',badge:()=>S.sicurezza.length+S.scadenze.length},
   {id:'rifornimenti',label:'Rifornimenti carburante',ico:'truck',badge:()=>S.rifornimenti.length},
   {id:'report',label:'Report e analisi',ico:'dash'},
-  {id:'contrattiRA',label:'Contratti R.A.',ico:'contract',beta:true,badge:()=>S.contrattiRA.length},
+  {id:'contrattiRA',label:'Contratti R.A.',ico:'contract',badge:()=>S.contrattiRA.length},
   {id:'conferimenti',label:'Registro conferimenti R10',ico:'contract',beta:true,badge:()=>S.conferimenti.length},
   {group:'Anagrafiche'},
   {id:'clienti',label:'Clienti',ico:'user',badge:()=>S.clienti.length},
@@ -1001,12 +1264,14 @@ const NAV=[
 ];
 let current='dashboard';
 function renderNav(){
-  document.getElementById('nav').innerHTML=NAV.map(n=>{
-    if(n.group)return `<div class="nav-group">${n.group}</div>`;
+  let grp=null;
+  document.getElementById('nav').innerHTML=navOrdinata().map(n=>{
+    if(n.group){grp=n.group;return `<div class="nav-group">${n.group}</div>`;}
     if(n.hidden&&n.hidden())return '';
     const b=n.badge?n.badge():null;
     const attivo=n.id===current||(current==='clienteScheda'&&n.id==='clienti')||(current==='scadenze'&&n.id==='sicurezza');
-    return `<button class="nav-item ${attivo?'active':''}" onclick="go('${n.id}')">
+    const dd=NAV_ORDINABILI.includes(grp)?` draggable="true" ondragstart="navDragStart(event,'${n.id}','${grp}')" ondragend="navDragEnd(event)" ondragover="navDragOver(event,'${grp}')" ondragleave="navDragLeave(event)" ondrop="navDrop(event,'${n.id}','${grp}')"`:'';
+    return `<button class="nav-item ${attivo?'active':''}"${dd} onclick="go('${n.id}')">
       <span class="ico">${svg(IC[n.ico],1.9)}</span><span>${n.label}</span>${n.beta?'<span class="nav-beta">beta</span>':''}${b?`<span class="badge">${b}</span>`:''}</button>`;
   }).join('');
 }
@@ -3338,13 +3603,14 @@ const RA_DEF={
   oggetto:`Contratto per il conferimento di terre e rocce da scavo, EER 17.05.04 diverse da quelle di cui alla voce 17.05.03, di cui al punto 7.31 bis del D.M. 5/2/1998 e s.m.i., provenienti dal Vs. cantiere sito in:`,
   datiR10:`Via Casilina Km 22,500, Monte Compatri cap 00077, Società Cava Basalto Laghetto S.r.l., Codice Fiscale 08188290582 e Partita IVA 01983311000, nostra comunicazione inizio attività prot. Provincia di Roma n° 63619 del 19/04/2010 – A.U.A. (Autorizzazione Unica Ambientale) R.U. 746 del 28/02/2018.`,
   codiceCer:`17 05 04`,
-  descrizioneCer:`Terre e rocce da scavo diverse da quelle di cui alla voce 170503`,
+  descrizioneCer:`Terre e rocce da scavo diverse da quelle di cui alla voce 17 05 03`,
   modalitaConferimento:`Terre e rocce da scavo per il recupero ambientale R10`,
-  condizioni1:`Per il conferimento deve essere effettuata la caratterizzazione del rifiuto attraverso il campionamento e analisi chimica del materiale da Laboratorio accreditato ACCREDIA a norma UNI CEI EN ISO/IEC 17025, il quale deve essere conforme a quanto previsto dalla legge. Documenti da presentare: ${RA_ANT_DOCUMENTI.map((t,i)=>(i+1)+'. '+t).join(' ')} Il test di cessione si ripete almeno ogni 12 mesi (art. 9 del D.M. 5/2/1998) e a ogni modifica sostanziale del processo di produzione.
-Eventuali materiali di risulta trovati all'interno delle terre e rocce non devono essere caricati, dovranno essere lasciati nell'area di cantiere per il relativo smaltimento a vostro carico.
-La verifica di conformità verrà effettuata ad ogni conferimento; i materiali non saranno accettati se difformi da quanto campionato ed analizzato.
-Tutti i viaggi di terra trasportati dovranno essere accompagnati da formulario rifiuti compilato a norma di legge e conforme al RENTRI.
-Gli automezzi autorizzati allo scarico saranno esclusivamente quelli specificati nell'allegato da voi fornito, che costituirà parte integrante e sostanziale del suddetto Contratto e la ditta dovrà essere iscritta all'Albo dei Gestori Ambientali.`,
+  condizioni1:`Per il conferimento deve essere effettuata la caratterizzazione del rifiuto attraverso il campionamento e l'analisi chimica del materiale da laboratorio accreditato ACCREDIA a norma UNI CEI EN ISO/IEC 17025; il materiale deve essere conforme a quanto previsto dalla legge. Il test di cessione si ripete almeno ogni 12 mesi, salvo diverse prescrizioni dell'autorità competente (art. 9 del D.M. 5/2/1998), e la caratterizzazione del rifiuto almeno ogni 24 mesi (art. 8); entrambi si rifanno a ogni modifica sostanziale del processo di produzione del rifiuto. Documenti da presentare:
+Eventuali materiali di risulta trovati all'interno delle terre e rocce non devono essere caricati: dovranno essere lasciati nell'area di cantiere per il relativo smaltimento a vostro carico.
+La verifica di conformità verrà effettuata a ogni conferimento; i materiali non saranno accettati se difformi da quanto campionato e analizzato.
+Tutti i viaggi dovranno essere accompagnati dal formulario di identificazione del rifiuto (FIR) compilato a norma di legge: digitale (xFIR) tramite RENTRI quando il produttore vi è obbligato, altrimenti sul modello cartaceo del D.M. 59/2023 vidimato tramite RENTRI.
+Gli automezzi autorizzati allo scarico saranno esclusivamente quelli specificati nell'allegato da voi fornito, che costituirà parte integrante e sostanziale del presente contratto; la ditta di trasporto dovrà essere iscritta all'Albo Nazionale Gestori Ambientali.`,
+  documenti:RA_ANT_DOCUMENTI.join('\n'),
   ubicazione:`Il sito è in Provincia di Roma, in Via Casilina Km 22,500 "Loc. Laghetto" Monte Compatri cap 00077, dal G.R.A. uscita Autostrada Roma-Napoli oppure Casilina.`,
   garanzia:`La Soc. Cava Basalto Laghetto S.r.l. garantisce il ritiro a recupero delle quantità da voi richieste, concordate con la presente, salvo eventuali impedimenti derivanti da interruzione dell'attività di recupero.`,
   pagamentoLegale:`Ai sensi del D.Lgs. 231/2002, con cui è stata recepita la direttiva della Comunità Europea 2000/35/CE del 29 Giugno 2000 e modificato dal D.Lgs. 192/2012, la nostra società provvederà, qualora si verificassero ritardi nel rispetto dei termini di pagamento, a fatturare gli eventuali interessi moratori maturati nei Vostri confronti, nonché la necessaria pretesa dell'ulteriore credito da questi scaturente. Non potranno essere proposte azioni od opposte eccezioni se non a pagamento regolarmente avvenuto. Resta salva la facoltà della scrivente di sospendere le forniture in caso di mancato pagamento di precedenti forniture.`,
@@ -3352,7 +3618,7 @@ Gli automezzi autorizzati allo scarico saranno esclusivamente quelli specificati
 Non possono essere apportate variazioni alla presente proposta professionale, se non preventivamente concordate e sottoscritte dalla Soc. Cava Basalto Laghetto S.r.l.
 Tale offerta non include tutto ciò che non è specificato e controfirmata per accettazione, ha valore come ordine.
 Per ogni controversia e pretesa derivante dall'interpretazione ed attuazione del presente contratto sarà competente in via esclusiva il Tribunale Ordinario di Roma.`,
-  art1341:`Ai sensi dell'art. 1341 del c.c. dichiaro di aver preso visione e di accettare espressamente i punti 1, 2, 3, 4, 5, 6 delle condizioni di contratto (limitazioni alla facoltà di proporre azioni od opporre eccezioni in caso di mancato pagamento e facoltà di sospensione delle forniture, irrevocabilità del mancato all'incasso).`,
+  art1341:`Ai sensi degli artt. 1341 e 1342 c.c. dichiaro di aver preso visione e di approvare specificamente le seguenti clausole: punti da 1 a 5 (condizioni per il conferimento e respingimento dei materiali non conformi); «Modalità di pagamento» (interessi moratori, nessuna azione od eccezione se non a pagamento avvenuto, facoltà di sospendere le forniture); punto 6 (esonero di responsabilità della Soc. Cava Basalto Laghetto S.r.l.); punto 9 (foro esclusivo di Roma).`,
   notaIva:`(IVA 22% inclusa)`,
   piePagina:`Cava Basalto Laghetto S.r.l. — Costruzioni edili e pavimentazioni stradali e recupero ambientale`
 };
@@ -4224,7 +4490,7 @@ const RA_MOD_DEF={
   }
 };
 const RA_STD_CAMPI=[['titolo','Titolo'],['sottotitolo','Sottotitolo'],['oggetto','Oggetto',3],['datiR10','Dati recupero ambientale R10',3],
-  ['modalitaConferimento','Modalità per il conferimento del rifiuto',2],['condizioni1','Condizioni punti 1-5 (una per riga)',12],['ubicazione','Ubicazione del sito di conferimento',2],
+  ['modalitaConferimento','Modalità per il conferimento del rifiuto',2],['condizioni1','Condizioni punti 1-5 (una per riga)',10,'L\'elenco dei documenti si stampa sotto il punto che finisce con i due punti «:».'],['documenti','Punto 1 — Documenti da presentare (uno per riga)',9],['ubicazione','Ubicazione del sito di conferimento',2],
   ['garanzia','Garanzia di ritiro',2],['pagamentoLegale','Testo pagamenti (D.Lgs. 231/2002)',5],['condizioni2','Condizioni punti 6-9 (una per riga)',7],
   ['art1341','Dichiarazione art. 1341 c.c.',3],['piePagina','Piè di pagina']];
 Object.assign(RA_MOD_DEF,{
@@ -4557,7 +4823,9 @@ function openContrattoRAStd(id){
       <div class="field col2"><label>Oggetto</label><textarea id="ra-oggetto" rows="3">${esc(x.oggetto||'')}</textarea></div>
       <div class="field col2"><label>Dati recupero ambientale R10</label><textarea id="ra-r10" rows="3">${esc(x.datiR10||'')}</textarea></div>
       <div class="field col2"><label>Modalità per il conferimento del rifiuto</label><textarea id="ra-modal" rows="2">${esc(x.modalitaConferimento||'')}</textarea></div>
-      <div class="field col2"><label>Condizioni punti 1-5 (una per riga)</label><textarea id="ra-cond1" rows="8">${esc(x.condizioni1||'')}</textarea></div>
+      <div class="field col2"><label>Condizioni punti 1-5 (una per riga)</label><textarea id="ra-cond1" rows="8">${esc(x.condizioni1||'')}</textarea>
+        <span class="hint">L'elenco dei documenti si stampa sotto il punto che finisce con i due punti «:».</span></div>
+      <div class="field col2"><label>Punto 1 — Documenti da presentare (uno per riga)</label><textarea id="ra-docs" rows="9">${esc(x.documenti||'')}</textarea></div>
       <div class="field col2"><label>Ubicazione del sito di conferimento</label><textarea id="ra-ubic" rows="2">${esc(x.ubicazione||'')}</textarea></div>
       <div class="field col2"><label>Garanzia di ritiro</label><textarea id="ra-gar" rows="2">${esc(x.garanzia||'')}</textarea></div>
       <div class="field col2"><label>Testo pagamenti (D.Lgs. 231/2002)</label><textarea id="ra-paglegale" rows="4">${esc(x.pagamentoLegale||'')}</textarea></div>
@@ -4587,7 +4855,7 @@ function openContrattoRAStd(id){
       prezzo:(prezzi[0]&&prezzi[0].prezzo!=null)?prezzi[0].prezzo:'',notaIva:v('ra-iva'),
       quantita:v('ra-qta')===''?'':num(v('ra-qta')),pagamento:v('ra-pag'),
       titolo:v('ra-titolo'),sottotitolo:v('ra-sottotitolo'),oggetto:v('ra-oggetto'),datiR10:v('ra-r10'),
-      modalitaConferimento:v('ra-modal'),condizioni1:v('ra-cond1'),ubicazione:v('ra-ubic'),garanzia:v('ra-gar'),
+      modalitaConferimento:v('ra-modal'),condizioni1:v('ra-cond1'),documenti:v('ra-docs'),ubicazione:v('ra-ubic'),garanzia:v('ra-gar'),
       pagamentoLegale:v('ra-paglegale'),condizioni2:v('ra-cond2'),art1341:v('ra-1341'),piePagina:v('ra-pie'),
       allegati:raFiles.map(f=>({...f}))};
     data.contrattoId=raSyncContratto(data,document.getElementById('ra-contratto').value);
@@ -4599,9 +4867,11 @@ function openContrattoRAStd(id){
   raAttList();
 }
 function raLinea(v,w){return `<span class="ra-fill" style="min-width:${w||120}px">${esc(v||'')}</span>`;}
-function raPunti(txt,start){
+function raPunti(txt,start,docs){
   const items=String(txt||'').split('\n').map(s=>s.trim()).filter(Boolean);
-  return `<ol class="ra-ol" start="${start||1}">${items.map(t=>`<li>${esc(t)}</li>`).join('')}</ol>`;
+  const sub=String(docs||'').split('\n').map(s=>s.trim()).filter(Boolean);
+  const dove=sub.length?items.findIndex(t=>/:\s*$/.test(t)):-1;
+  return `<ol class="ra-ol" start="${start||1}">${items.map((t,i)=>`<li>${esc(t)}${i===dove?`<ol class="ra-ol ra-sub-ol" type="1">${sub.map(d=>`<li>${esc(d)}</li>`).join('')}</ol>`:''}</li>`).join('')}</ol>`;
 }
 function printContratto(id){
   const c=S.contratti.find(x=>x.id===id);if(!c)return;
@@ -4669,7 +4939,7 @@ function printContrattoRA(id,recBianco){
       <tbody><tr><td>${esc(x.codiceCer)}</td><td>${esc(x.descrizioneCer)}</td></tr></tbody></table>
     <div class="ra-h2">MODALITÀ PER IL CONFERIMENTO DEL RIFIUTO (EER ${esc(x.codiceCer)})</div>
     <p class="ra-p">${esc(x.modalitaConferimento)}</p>
-    ${raPunti(x.condizioni1,1)}
+    ${raPunti(x.condizioni1,1,x.documenti)}
     <div class="ra-h2">UBICAZIONE DEL SITO DI CONFERIMENTO</div>
     <p class="ra-p">${esc(x.ubicazione)}</p>
     <div class="ra-h2">LISTINO PREZZI PER IL CONFERIMENTO</div>
@@ -7868,7 +8138,6 @@ function renderImpostazioni(c){
           <button class="btn" onclick="exportData()">${svg(IC.doc)} Esporta backup (.json)</button>
           <label class="btn" style="justify-content:center">${svg(IC.plus)} Importa backup<input type="file" accept="application/json" style="display:none" onchange="importData(this)"></label>
           ${SB_ON()?`<button class="btn" onclick="backupCloud()">${svg(IC.list)} Salva copia sul cloud</button>`:''}
-          <button class="btn" onclick="openDiagnostica()">${svg(IC.shield)} Esegui diagnostica</button>
         </div>
       </div>
       <div class="card" style="margin-top:18px">
@@ -7879,7 +8148,9 @@ function renderImpostazioni(c){
           :'<p class="sub" style="margin:0">Nessuna modifica registrata finora. Da qui vedrai chi ha creato, modificato o eliminato documenti e anagrafiche, e quando.</p>'}
         </div>
       </div>
-    </div>`;
+    </div>
+    ${navCardHtml()}
+    ${diagCardHtml()}`;
 }
 function saveNumerazione(){
   const y=new Date().getFullYear();
@@ -8142,7 +8413,7 @@ async function attFlushPending(){
   if(attFlushing||(!SB_ON()&&!DBX.connected()))return;attFlushing=true;
   try{for(const key of attPending()){
     const b=await idbGet(key); if(!b){attPendingRemove(key);continue;}
-    try{ if(SB_ON())await sbUploadFile(key,b); else await dbxUploadFile('/allegati/'+key,b); attPendingRemove(key);}catch(e){break;}
+    try{ if(SB_ON())await sbUploadFile(key,b); else await dbxUploadFile('/allegati/'+key,b); attPendingRemove(key);}catch(e){diagLog('Allegati: invio non riuscito ('+key+') — '+((e&&e.message)||e));break;}
   }}finally{attFlushing=false;}
 }
 function attKey(nome){return uid()+'_'+String(nome||'file').replace(/[^\w.\-]+/g,'_').slice(0,40);}
@@ -8224,7 +8495,7 @@ async function updateWeather(){
     const [ico,desc]=wmoInfo(j.current.weather_code);
     const mx=Math.round(j.daily.temperature_2m_max[0]), mn=Math.round(j.daily.temperature_2m_min[0]);
     el.innerHTML=`<span class="wx-ico">${ico}</span><span class="wx-t">${t}°</span><span class="wx-d">${esc(desc)}<br>${METEO_LUOGO}</span>`;
-    el.title=`Meteo ${METEO_LUOGO}: ${desc}, ${t}° (min ${mn}° · max ${mx}°)`;
+    el.title=`Meteo ${METEO_LUOGO}: ${desc}, ${t}° (min ${mn}° · max ${mx}°) · clic per le previsioni`;
   }catch(e){ el.innerHTML=''; }
 }
 
@@ -8235,7 +8506,8 @@ async function updateWeather(){
 const SB_URL='https://vmmkjmljsliuczskrlfi.supabase.co';
 const SB_ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZtbWtqbWxqc2xpdWN6c2tybGZpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0OTY1NzYsImV4cCI6MjEwMTA3MjU3Nn0.eD96Hcd4cInU3jwnuoGASGUC4-It2ZhT4fDJ9aP5708';
 const SB_ARRAYS=['clienti','destinazioni','materiali','unitaMisura','mezzi','causali','aspetti','listini','contratti','contrattoTipi','compilatori','modalitaPagamento','ddt','fatture','sicurezza','sicCategorie','docamm','scadenze','scadCategorie','contrattiRA','raDocumenti','primaNota','pnCategorie','fattureEl','conferimenti','appLog','rifornimenti','movimentiBanca','movBancaCategorie','speseCarta'];
-const SB_META=['azienda','settings','counters'];
+/* Gli elenchi di categorie sono elenchi di testi (senza id): si salvano come righe «meta», altrimenti non arriverebbero mai su Supabase */
+const SB_META=['azienda','settings','counters','movBancaCategorie','sicCategorie','scadCategorie','pnCategorie'];
 let sbClient=null, sbUser=null, sbChannel=null, sbSnap={}, sbPushTimer=null, sbRenderTimer=null, sbState='idle', sbOffline=false;
 let sbBooting=false;
 function SB_ON(){try{return localStorage.getItem('cbl_backend')!=='local';}catch(e){return true;}}
@@ -8261,7 +8533,7 @@ function sbLocalDiffKeys(){
   SB_META.forEach(k=>{ if(JSON.stringify(S[k]||{})!==sbSnap['meta:'+k]) changed.meta[k]=true; });
   return changed;
 }
-function syncStatusSB(s){sbState=s;updateFoot();}
+function syncStatusSB(s){sbState=s;updateFoot();diagSync(s);}
 /* Caricamento iniziale da Supabase */
 /* Caricamento COMPLETO con paginazione: Supabase limita ogni risposta a ~1000 righe,
    quindi senza paginazione i dati oltre le 1000 non venivano mai caricati (causa delle
@@ -8359,7 +8631,7 @@ async function sbPush(){
   // SALVAGUARDIA anti-perdita: non inviare cancellazioni di massa (quasi sempre segno di uno stato locale incompleto)
   const massDelete=deletes.length>20;
   const toSend=massDelete?upserts:up;
-  if(massDelete)console.warn('Sync: ignorate '+deletes.length+' cancellazioni sospette per proteggere i dati sul server.');
+  if(massDelete){console.warn('Sync: ignorate '+deletes.length+' cancellazioni sospette per proteggere i dati sul server.');diagLog('Sincronizzazione: bloccate '+deletes.length+' cancellazioni sospette (protezione dati)');}
   if(!toSend.length){ sbOffline=false; syncStatusSB(massDelete?'err':'ok'); return; }
   syncStatusSB('sync');
   try{
@@ -8367,7 +8639,7 @@ async function sbPush(){
     if(!massDelete)sbBuildSnapshot();
     sbOffline=false; syncStatusSB(massDelete?'err':'ok');
   }
-  catch(e){ console.error(e); sbOffline=!navigator.onLine; syncStatusSB(sbOffline?'offline':'err'); }
+  catch(e){ console.error(e); diagLog('Sincronizzazione: invio non riuscito — '+((e&&(e.message||e.details))||e)); sbOffline=!navigator.onLine; syncStatusSB(sbOffline?'offline':'err'); }
 }
 /* Al ritorno della connessione: adotta le modifiche altrui sui record NON toccati da noi,
    e per i record che abbiamo cambiato offline rileva i conflitti (opzione B: scegli tu). */
@@ -8408,7 +8680,7 @@ async function sbReconcile(){
       }
     });
   });
-  if(conflicts.length){ sbResolveConflicts(conflicts); return; }
+  if(conflicts.length){ diagLog('Sincronizzazione: '+conflicts.length+' conflitti da risolvere dopo il lavoro offline'); sbResolveConflicts(conflicts); return; }
   await Store.set(KEY,S); render();
   await sbPush(); attFlushPending(); sbSubscribe();
 }
@@ -8536,6 +8808,7 @@ async function sbBackgroundSync(){
   attFlushPending(); if(!window._attTimer){window._attTimer=setInterval(attFlushPending,60000);}
 }
 function commonBootTail(){
+  diagLog('Avvio · versione '+APP_BUILD+' · '+(SB_ON()?'Supabase':'locale')+(navigator.onLine?'':' · offline'));
   updateClock();setInterval(updateClock,1000);
   updateWeather();setInterval(updateWeather,30*60*1000);
   setTimeout(promemoriaScadenze,600);setTimeout(promemoriaBackup,1500);
@@ -8610,6 +8883,7 @@ function sbMigraDialog(){
   await DBX.handleRedirect();
   await loadState();
   applyTheme();renderNav();render();updateFoot();
+  diagLog('Avvio · versione '+APP_BUILD+' · '+(SB_ON()?'Supabase':'locale')+(navigator.onLine?'':' · offline'));
   updateClock();setInterval(updateClock,1000);
   updateWeather();setInterval(updateWeather,30*60*1000);
   if(DBX.connected()){ await syncPull(true); attFlushPending(); setInterval(()=>{syncPull(true);attFlushPending();},60000); }

@@ -826,7 +826,7 @@ function openDiagnostica(){
 /* ===================== DIAGNOSTICA (Impostazioni) =====================
    Registro degli eventi salvato su questo dispositivo (ultime 300 righe): avvio, errori, sincronizzazione,
    invio degli allegati. In Impostazioni: stato dell'app, controlli sui dati, test delle funzioni, copia del rapporto. */
-const APP_BUILD='19/11/2026 11:03';
+const APP_BUILD='26/11/2026 11:46';
 const DIAG_KEY='cbl_diag_log';
 let diagSyncUltimo='';let sbUltimoOk=0;
 function diagRighe(){try{return JSON.parse(localStorage.getItem(DIAG_KEY)||'[]');}catch(e){return [];}}
@@ -1399,6 +1399,8 @@ function scadenzeUnificate(limiteGiorni){
     data:s.dataScadenza,gg:gg(s.dataScadenza),importo:num(s.importo),azione:`go('scadenze')`}));
   (S.sicurezza||[]).filter(x=>x.validoAl).forEach(x=>out.push({tipo:'Sicurezza',pill:'ok',titolo:x.categoria||'Documento',sotto:x.descrizione||x.responsabile||'',
     data:x.validoAl,gg:gg(x.validoAl),importo:0,azione:`go('sicurezza')`}));
+  (S.contrattiRA||[]).filter(x=>raIsCond(x)&&x.stato!=='chiuso'&&!raCondEfficacia(x)).forEach(x=>{const d=raCondTermine(x);out.push({tipo:'Condizione AUA',pill:'warn',titolo:`Contratto R.A. ${raNum(x)}: termine modifica AUA`,sotto:clienteName(x.clienteId)||x.ditta||'',
+    data:d,gg:gg(d),importo:0,azione:`go('contrattiRA');setTimeout(()=>raAntScheda('${x.id}'),0)`});});
   (S.contratti||[]).filter(c=>c.dataFine).forEach(c=>out.push({tipo:'Contratto',pill:'grey',titolo:`Contratto ${contrattoNum(c)}`,sotto:clienteName(c.clienteId)||'',
     data:c.dataFine,gg:gg(c.dataFine),importo:0,azione:`go('contratti')`}));
   const lim=limiteGiorni==null?null:limiteGiorni;
@@ -3634,7 +3636,7 @@ function renderContrattiRA(c){
   if(term)rows=rows.filter(x=>[raNum(x),x.ditta,x.cantiere,x.produttore].filter(Boolean).join(' ').toLowerCase().includes(term));
   rows.sort((a,b)=>(b.data||'').localeCompare(a.data||''));
   c.innerHTML=`${raVistaTabs()}
-    <div class="note">${svg(IC.contract)}<div>Contratti per il conferimento di terre e rocce da scavo (recupero ambientale R10), di due tipi: <b>Standard</b>, con testi modificabili e unità di misura a scelta, e <b>Con anticipo</b>, con fattura alla firma, anticipo e rate mensili sulle tonnellate dei formulari.</div></div>
+    <div class="note">${svg(IC.contract)}<div>Contratti per il conferimento di terre e rocce da scavo (recupero ambientale R10), di tre tipi: <b>Standard</b>, con testi modificabili e unità di misura a scelta; <b>Con anticipo</b>, con fattura alla firma, anticipo e rate mensili sulle tonnellate dei formulari; <b>Con anticipo — in attesa AUA</b>, uguale ma con conferimenti e termini che partono dalla comunicazione della modifica dell'AUA (entro 6 mesi, altrimenti il contratto si scioglie).</div></div>
     <div class="toolbar">
       <div class="search">${svg(IC.search)}<input placeholder="Cerca per numero, ditta, cantiere…" value="${esc(searchTerm.contrattiRA||'')}" data-sf="contrattiRA" oninput="searchTerm.contrattiRA=this.value;render()"></div>
     </div>
@@ -3644,7 +3646,7 @@ function renderContrattiRA(c){
         : rows.length===0 ? emptyState('search','Nessun risultato','Cambia il termine di ricerca.')
         : `<table><thead><tr><th>N.</th><th>Data</th><th>Ditta</th><th>Cantiere</th><th class="num">Prezzo</th><th class="num">Quantità</th><th>Allegati</th><th></th></tr></thead>
           <tbody>${rows.map(x=>`<tr>
-            <td class="strong">${esc(raNum(x)||'—')}${raIsAnt(x)?`<div><span class="pill accent">Con anticipo</span>${x.stato==='chiuso'?' <span class="pill grey">Chiuso</span>':''}</div>`:''}</td>
+            <td class="strong">${esc(raNum(x)||'—')}${raIsAnt(x)?`<div><span class="pill accent">${x.condAUA?'Con anticipo · AUA':'Con anticipo'}</span>${x.stato==='chiuso'?(raCondStato(x)==='sciolto'?'':' <span class="pill grey">Chiuso</span>'):''}${raCondPill(x)}</div>`:''}</td>
             <td class="sub">${x.data?dmy(x.data):'—'}</td>
             <td>${esc(x.ditta||'—')}</td>
             <td class="sub">${raIsAnt(x)?(()=>{const n=(x.omologhe||[]).length;return n?n+(n===1?' cantiere':' cantieri'):'nessun cantiere';})():esc(x.cantiere||'—')}</td>
@@ -3819,6 +3821,32 @@ In caso di risoluzione restano dovute le rate dei conferimenti già eseguiti. La
   approvazione:"Ai sensi degli artt. 1341 e 1342 c.c., il Conferitore approva espressamente le seguenti clausole: art. 6 (respingimento dei carichi e costi); art. 8.2 (anticipo e inizio dei conferimenti dopo l'accredito); art. 8.5 (nessuna azione od eccezione prima del pagamento; sospensione dei carichi); art. 9 (quantità non conferita); art. 10 (esonero di responsabilità); art. 11 (risoluzione); art. 14 (foro esclusivo).",
   allegatoTitolo:RA_ALL_A_DEF.titolo,allegatoEsito:RA_ALL_A_DEF.esito,allegatoAllegati:RA_ALL_A_DEF.allegati
 };
+/* ---- Contratto con anticipo IN ATTESA DELLA MODIFICA AUA (condizione sospensiva, art. 1353 c.c.) ----
+   Stesso motore del contratto con anticipo (fattura alla firma, anticipo, rate, rendiconto) con in più l'art. 1-bis:
+   gli effetti partono dalla data di efficacia (PEC al cliente che comunica la modifica non sostanziale dell'A.U.A.);
+   se la condizione non si avvera entro il termine (6 mesi, prorogabile per iscritto) il contratto si scioglie:
+   nota di credito totale e restituzione dell'anticipo entro 30 giorni, senza interessi. */
+const RA_ANT_COND_TESTI={...RA_ANT_TESTI,
+  titolo:'CONTRATTO CON ANTICIPO PER IL CONFERIMENTO DI TERRE E ROCCE DA SCAVO SOTTOPOSTO A CONDIZIONE SOSPENSIVA',
+  premesse:`Il Gestore esercita l'attività di recupero ambientale R10 nel sito di Via Casilina Km 22,500, Monte Compatri (RM): comunicazione di inizio attività prot. Provincia di Roma n° 63619 del 19/04/2010; A.U.A. (Autorizzazione Unica Ambientale) R.U. 746 del 28/02/2018.
+Il Gestore ha presentato all'autorità competente la comunicazione di modifica non sostanziale dell'A.U.A. [comunicazione AUA], relativa a [oggetto modifica AUA] (art. 6 del D.P.R. 59/2013). I conferimenti previsti da questo contratto presuppongono l'efficacia di tale modifica.
+Il Conferitore esegue lavori in più cantieri e intende conferire al Gestore le terre e rocce da scavo prodotte, classificate EER [codice EER], senza individuare oggi uno specifico cantiere.
+Le Parti stipulano quindi un contratto con anticipo, in forma di contratto aperto, sottoposto alla condizione sospensiva dell'art. 1-bis. Il contratto fissa prezzo e quantitativo massimo, senza termine di durata, salvo la chiusura dopo [mesi] mesi senza scarichi. Il corrispettivo è fatturato per intero alla firma; si paga con un anticipo e con rate mensili sulle quantità effettivamente conferite.
+Ogni cantiere si aggiunge con la scheda di omologa dell'Allegato A, con i documenti richiesti dagli artt. 8 e 9 del D.M. 5/2/1998.
+Le premesse e l'Allegato A (scheda di omologa del cantiere) fanno parte integrante del contratto.`,
+  art1bis:`Gli effetti del contratto sono sospesi finché il Gestore non può eseguire la modifica non sostanziale dell'A.U.A. indicata nelle premesse (condizione sospensiva, art. 1353 c.c.). La condizione si avvera con l'aggiornamento dell'autorizzazione da parte dell'autorità competente oppure, se l'autorità non si esprime, con il decorso di 60 giorni dalla comunicazione di modifica (art. 6, comma 1, D.P.R. 59/2013).
+Il Gestore comunica al Conferitore via PEC l'avveramento della condizione e gli trasmette la relativa documentazione. La data di questa PEC è la data di efficacia del contratto: da essa decorrono i conferimenti, il quantitativo massimo, il termine dell'art. 3 e tutte le obbligazioni legate ai conferimenti. Fino a quella data il Gestore non accetta carichi in esecuzione del contratto.
+Sono efficaci dalla firma: il prezzo, che resta fisso; la fattura e l'anticipo (artt. 8.1 e 8.2); questo articolo.
+La condizione deve avverarsi entro [mesi condizione] mesi dalla firma, cioè entro il [termine condizione]. Le Parti possono prorogare il termine con accordo scritto firmato prima della scadenza. Il Gestore segue la procedura con diligenza e informa il Conferitore delle richieste dell'autorità e dei tempi previsti.
+Se la condizione non si avvera entro il termine, o se prima del termine l'autorità nega la modifica, il contratto si scioglie e non produce effetti, senza penali né risarcimenti a carico delle Parti. Entro [giorni restituzione] giorni dalla scadenza del termine, o dalla comunicazione del diniego, il Gestore restituisce l'anticipo ricevuto, senza interessi, ed emette nota di credito per l'intera fattura (art. 26, comma 2, D.P.R. 633/1972).`,
+  art2:RA_ANT_TESTI.art2.replace('per tutti i cantieri insieme.','per tutti i cantieri insieme, a partire dalla data di efficacia (art. 1-bis).'),
+  art3:`Il contratto non ha un termine di durata: dalla data di efficacia (art. 1-bis) resta in vigore fino al conferimento del quantitativo massimo.
+Il contratto si chiude comunque se per [mesi] mesi consecutivi non ci sono conferimenti. I mesi si contano dall'ultimo scarico o, se non c'è stato alcuno scarico, dalla data di efficacia.
+Il Gestore comunica la chiusura via PEC. Si applica l'art. 9.`,
+  art8_2:"Alla firma il Conferitore versa con bonifico un anticipo [anticipo]. I conferimenti iniziano dalla data di efficacia (art. 1-bis), dopo l'accredito dell'anticipo. Se la condizione non si avvera, l'anticipo è restituito come previsto dall'art. 1-bis.",
+  art9:RA_ANT_TESTI.art9+"\nSe la condizione dell'art. 1-bis non si avvera, il contratto si scioglie come previsto da quell'articolo: nota di credito per l'intera fattura e restituzione dell'intero anticipo ricevuto.",
+  approvazione:RA_ANT_TESTI.approvazione.replace('le seguenti clausole: art. 6','le seguenti clausole: art. 1-bis (condizione sospensiva: effetti dalla data di efficacia, termine, scioglimento senza penali né risarcimenti, restituzione dell\'anticipo senza interessi); art. 6')
+};
 /* Campi del modulo, nello stesso stile del contratto standard: [chiave, etichetta, righe (vuoto = una riga), suggerimento] */
 const RA_ANT_CAMPI=[
   ['titolo','Titolo'],['sottotitolo','Sottotitolo'],
@@ -3845,11 +3873,13 @@ const RA_ANT_CAMPI=[
   ['art13','Art. 13 — Dati personali',2],
   ['art14','Art. 14 — Foro competente',2],
   ['approvazione','Approvazione specifica delle clausole (artt. 1341-1342 c.c.)',3]];
+const RA_ANT_COND_CAMPI=(()=>{const c=[...RA_ANT_CAMPI];const i=c.findIndex(q=>q[0]==='art1');c.splice(i+1,0,['art1bis',"Art. 1-bis — Condizione sospensiva: modifica dell'A.U.A. (un punto per riga)",9]);return c;})();
 const RA_ANT_ALL_CAMPI=[['allegatoTitolo','Allegato A — Titolo'],['allegatoEsito','Allegato A — Riga «Esito» della scheda',2],['allegatoAllegati','Allegato A — Riga «Allegati» della scheda',2]];
 /* Struttura stampata: titoli degli articoli e tipo di campo */
 const RA_ANT_ART=[
   {tit:'Premesse',k:'premesse',lista:true},
   {tit:'Art. 1 — Oggetto',k:'art1',dopo:'tabellaRifiuto'},
+  {tit:"Art. 1-bis — Condizione sospensiva: modifica dell'A.U.A.",k:'art1bis',lista:true},
   {tit:'Art. 2 — Quantitativo massimo',k:'art2',lista:true},
   {tit:'Art. 3 — Durata',k:'art3',lista:true},
   {tit:'Art. 4 — Attivazione dei cantieri (omologa)',k:'art4',lista:true,sub:'documenti'},
@@ -3865,15 +3895,17 @@ const RA_ANT_ART=[
   {tit:'Art. 14 — Foro competente',k:'art14'}];
 /* Dati automatici: [parola] → chiave dei valori */
 const RA_ANT_DATI={'codice eer':'eer','quantità':'quantita','mesi':'mesi','prezzo':'prezzo','aliquota iva':'aliquota','imponibile':'imponibile','iva':'iva','totale':'totale',
-  'anticipo':'anticipo','rata':'rata','esempio rata':'esempioRata','giorni pagamento':'giorniPagamento','giorno rendiconto':'giornoRendiconto','iban':'iban','esempio chiusura':'esempioChiusura'};
+  'anticipo':'anticipo','rata':'rata','esempio rata':'esempioRata','giorni pagamento':'giorniPagamento','giorno rendiconto':'giornoRendiconto','iban':'iban','esempio chiusura':'esempioChiusura',
+  'comunicazione aua':'auaCom','oggetto modifica aua':'auaOgg','mesi condizione':'condMesi','termine condizione':'condTermine','giorni restituzione':'condGiorni'};
 const RA_ANT_DATI_ELENCO='[codice EER] [quantità] [mesi] [prezzo] [aliquota IVA] [imponibile] [IVA] [totale] [anticipo] [rata] [esempio rata] [giorni pagamento] [giorno rendiconto] [IBAN] [esempio chiusura]';
-const RA_ANT_KEYS=[...RA_ANT_CAMPI,...RA_ANT_ALL_CAMPI].map(c=>c[0]);
+const RA_ANT_DATI_ELENCO_COND=RA_ANT_DATI_ELENCO+' [comunicazione AUA] [oggetto modifica AUA] [mesi condizione] [termine condizione] [giorni restituzione]';
+const RA_ANT_KEYS=[...RA_ANT_COND_CAMPI,...RA_ANT_ALL_CAMPI].map(c=>c[0]);
 /* Testi di un contratto: quelli salvati nel contratto (solo i campi previsti) sopra i testi originali */
-function raAntTesti(x){const t={...RA_ANT_TESTI};const s=(x&&x.testi)||{};RA_ANT_KEYS.forEach(k=>{if(typeof s[k]==='string')t[k]=s[k];});return t;}
+function raAntTesti(x){const t={...(x&&x.condAUA?RA_ANT_COND_TESTI:RA_ANT_TESTI)};const s=(x&&x.testi)||{};RA_ANT_KEYS.forEach(k=>{if(typeof s[k]==='string')t[k]=s[k];});return t;}
 /* Testi del modello (Documenti per il cliente → Modelli): per i nuovi contratti e la stampa in bianco */
-function raAntTestiModello(){
-  const t=raModelloTesti('antBianco'),al=raModelloTesti('allegatoA');
-  return {...RA_ANT_TESTI,...t,allegatoTitolo:al.titolo,allegatoEsito:al.esito,allegatoAllegati:al.allegati};
+function raAntTestiModello(cond){
+  const t=raModelloTesti(cond?'antCondBianco':'antBianco'),al=raModelloTesti('allegatoA');
+  return {...(cond?RA_ANT_COND_TESTI:RA_ANT_TESTI),...t,allegatoTitolo:al.titolo,allegatoEsito:al.esito,allegatoAllegati:al.allegati};
 }
 function raAntInline(s,vars){
   return esc(String(s==null?'':s)).replace(/\[([^\[\]]{2,30})\]/g,(m,k)=>{const c=RA_ANT_DATI[k.trim().toLowerCase()];return (c&&vars&&vars[c]!=null)?vars[c]:m;});
@@ -3909,18 +3941,140 @@ function raAntCampiHtml(t,pfx,campi){
     ?`<div class="field col2"><label>${lab}</label><textarea id="${pfx}-${k}" rows="${rows}">${esc(t[k]||'')}</textarea>${hint?`<span class="hint">${hint}</span>`:''}</div>`
     :`<div class="field col2"><label>${lab}</label><input id="${pfx}-${k}" value="${esc(t[k]||'')}">${hint?`<span class="hint">${hint}</span>`:''}</div>`).join('');
 }
-function raAntDatiHint(){return `<div class="field col2"><span class="hint">Le parole tra parentesi quadre si compilano da sole con i dati del contratto (nella stampa in bianco restano righe da compilare): ${esc(RA_ANT_DATI_ELENCO)}.</span></div>`;}
+function raAntDatiHint(cond){return `<div class="field col2"><span class="hint">Le parole tra parentesi quadre si compilano da sole con i dati del contratto (nella stampa in bianco restano righe da compilare): ${esc(cond?RA_ANT_DATI_ELENCO_COND:RA_ANT_DATI_ELENCO)}.</span></div>`;}
 function raAntTestiRead(pfx,campi){
   const out={};campi.forEach(([k])=>{const el=document.getElementById(pfx+'-'+k);if(el)out[k]=el.value.trim();});return out;
 }
-function raAntTestiRipristina(){
-  const t=raAntTestiModello();
-  [...RA_ANT_CAMPI,...RA_ANT_ALL_CAMPI].forEach(([k])=>{const el=document.getElementById('rant-'+k);if(el)el.value=t[k]||'';});
+function raAntTestiRipristina(cond){
+  const t=raAntTestiModello(cond);
+  [...(cond?RA_ANT_COND_CAMPI:RA_ANT_CAMPI),...RA_ANT_ALL_CAMPI].forEach(([k])=>{const el=document.getElementById('rant-'+k);if(el)el.value=t[k]||'';});
   toast('Testi del modello ripristinati: le modifiche valgono solo dopo «Salva contratto»');
 }
 const RA_MESI=['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
 const raR3=v=>Math.round(num(v)*1000)/1000;
 function raIsAnt(x){return !!x&&x.tipo==='anticipo';}
+/* ---- Contratto con anticipo in attesa AUA: stato, efficacia, proroga, scioglimento ---- */
+function raIsCond(x){return raIsAnt(x)&&!!x.condAUA;}
+function raCondEfficacia(x){return (x&&x.efficacia&&x.efficacia.data)||'';}
+function raCondTermineBase(x){return raAddMonthsIso(x.data||today(),num(x.condMesi)||6);}
+function raCondTermine(x){return (x.condProroga&&x.condProroga.data)||raCondTermineBase(x);}
+/* 'efficace' | 'attesa' | 'scaduta' | 'sciolto' */
+function raCondStato(x){
+  if(!raIsCond(x))return '';
+  if(x.stato==='chiuso'&&x.chiusura&&['condizione','diniego'].includes(x.chiusura.motivo))return 'sciolto';
+  if(raCondEfficacia(x))return 'efficace';
+  return raCondTermine(x)<today()?'scaduta':'attesa';
+}
+function raCondPill(x){
+  const s=raCondStato(x);if(!s||s==='efficace')return '';
+  if(s==='sciolto')return ' <span class="pill grey">Sciolto</span>';
+  return s==='scaduta'?` <span class="pill danger" title="Termine della condizione: ${dmy(raCondTermine(x))}">Termine AUA scaduto</span>`
+    :` <span class="pill warn" title="Termine della condizione: ${dmy(raCondTermine(x))}">In attesa AUA</span>`;
+}
+function raCondBlocco(x){
+  if(!raIsCond(x)||x.stato==='chiuso')return '';
+  const eff=raCondEfficacia(x),term=raCondTermine(x),btn=(lab,fn,cls)=>`<button type="button" class="btn sm ${cls||''}" onclick="${fn}">${lab}</button>`;
+  if(eff){const e=x.efficacia||{};
+    return `<div class="note">${svg(IC.shield)}<div><b>Contratto efficace dal ${dmy(eff)}</b> — modifica AUA ${e.modo==='silenzio'?'efficace per decorso dei 60 giorni (art. 6 D.P.R. 59/2013)':'aggiornata dall\'autorità'}${e.rif?': '+esc(e.rif):''}. Da questa data contano conferimenti, quantitativo e mesi senza scarichi.
+      <button class="linklike" onclick="raAntCondAnnullaEfficacia('${x.id}')">annulla</button></div></div>`;}
+  const g=raGiorni(today(),term),pr=x.condProroga;
+  return `<div class="note" style="${g<0?'border-color:var(--danger)':''}">${svg(IC.shield)}<div style="flex:1"><b>In attesa della modifica non sostanziale dell'AUA</b>${x.auaComunicazione?' ('+esc(x.auaComunicazione)+')':''}.
+      Conferimenti non ancora possibili. Termine della condizione: <b>${dmy(term)}</b>${pr?` (prorogato con accordo${pr.accordo?' del '+dmy(pr.accordo):''})`:''} — ${g<0?`<span class="pill danger">scaduto da ${-g} giorni</span>`:`fra ${g} giorni`}.
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
+        ${btn('Registra comunicazione AUA',`raAntCondEfficaciaDialog('${x.id}')`,'primary')}
+        ${btn(pr?'Modifica proroga':'Proroga del termine',`raAntCondProroga('${x.id}')`)}
+        ${btn('Condizione non avverata',`raAntCondNonAvverata('${x.id}')`,g<0?'danger':'')}
+      </div></div></div>`;
+}
+/* Data di efficacia: PEC al cliente con la comunicazione della modifica AUA */
+function raAntCondEfficaciaDialog(id){
+  const x=S.contrattiRA.find(s=>s.id===id);if(!raIsCond(x))return;
+  const term=raCondTermine(x);
+  const body=`<div class="note">${svg(IC.shield)}<div>Registra la data della <b>PEC con cui comunichi al cliente</b> che la modifica dell'AUA è efficace (art. 1-bis). Da questa data partono conferimenti, quantitativo massimo e mesi senza scarichi. Termine della condizione: ${dmy(term)}.</div></div>
+    <div class="form-grid">
+      <div class="field"><label>Data della PEC al cliente</label><input id="rce-data" type="date" value="${today()}"></div>
+      <div class="field"><label>La condizione si è avverata per</label><select id="rce-modo">
+        <option value="aggiornamento">Aggiornamento dell'AUA da parte dell'autorità</option>
+        <option value="silenzio">60 giorni senza risposta (art. 6, c. 1, D.P.R. 59/2013)</option></select></div>
+      <div class="field col2"><label>Riferimento (atto o nota dell'autorità, o data della comunicazione)</label><input id="rce-rif" placeholder="Es. determinazione n. … del …"></div>
+      <div class="field col2"><label><input type="checkbox" id="rce-mail" checked> Prepara l'email al cliente</label>
+        <span class="hint">Si apre il programma di posta con il testo già scritto: allega la documentazione e invia dalla PEC.</span></div>
+    </div>`;
+  openModal('Comunicazione della modifica AUA · contratto '+raNum(x),body,()=>{
+    const data=document.getElementById('rce-data').value||today(),modo=document.getElementById('rce-modo').value,rif=document.getElementById('rce-rif').value.trim();
+    if(data<(x.data||'')){toast('La data è precedente alla firma del contratto');return false;}
+    if(data>term){toast(`La data è successiva al termine della condizione (${dmy(term)}): registra prima la proroga firmata`);return false;}
+    x.efficacia={data,modo,rif,registrata:today()};
+    logAction('Contratto R.A. '+raNum(x)+' efficace',`dal ${dmy(data)} · modifica AUA${rif?' '+rif:''}`);
+    persist();render();toast('Contratto efficace dal '+dmy(data)+': da ora si possono registrare i formulari');
+    if(document.getElementById('rce-mail').checked)setTimeout(()=>raAntCondEmail(x.id),300);
+    setTimeout(()=>raAntScheda(x.id),0);return true;
+  },{submitLabel:'Registra'});
+}
+function raAntCondEmail(id){
+  const x=S.contrattiRA.find(s=>s.id===id);if(!x)return;const c=clienteById(x.clienteId)||{},e=x.efficacia||{},nn=raNum(x);
+  const sogg=`Contratto con anticipo n. ${nn} — avveramento della condizione (modifica non sostanziale A.U.A.)`;
+  const corpo=`Spett.le ${c.ragioneSociale||x.ditta||''},\n\ncon riferimento al contratto con anticipo n. ${nn} del ${dmy(x.data)}, vi comunichiamo che la modifica non sostanziale dell'Autorizzazione Unica Ambientale${x.auaComunicazione?' ('+x.auaComunicazione+')':''} è efficace${e.modo==='silenzio'?', essendo decorsi 60 giorni dalla comunicazione senza che l\'autorità competente si sia espressa (art. 6, comma 1, D.P.R. 59/2013)':''}${e.rif?' — '+e.rif:''}.\n\nAi sensi dell'art. 1-bis del contratto, dalla data di questa comunicazione il contratto è efficace: potete iniziare i conferimenti, previo invio della scheda di omologa del cantiere (Allegato A) con i documenti dell'art. 4.\n\nIn allegato la documentazione.\n\nCordiali saluti\nCava Basalto Laghetto S.r.l.`;
+  const a=document.createElement('a');a.href=`mailto:${encodeURIComponent(c.pec||c.email||'')}?subject=${encodeURIComponent(sogg)}&body=${encodeURIComponent(corpo)}`;document.body.appendChild(a);a.click();a.remove();
+}
+function raAntCondAnnullaEfficacia(id){
+  const x=S.contrattiRA.find(s=>s.id===id);if(!x)return;
+  const n=raAntConf(x).length;
+  if(n){infoDialog('Impossibile annullare',`<div class="note">${svg(IC.shield)}<div>Al contratto sono già collegati <b>${n} formulari</b>: la data di efficacia non si può togliere. Puoi correggerla scollegando prima i formulari.</div></div>`);return;}
+  confirmDialog('Annullare la data di efficacia?','Il contratto torna «in attesa della modifica AUA».',()=>{x.efficacia=null;logAction('Contratto R.A. '+raNum(x),'data di efficacia annullata');persist();render();toast('Data di efficacia annullata');},'Annulla efficacia');
+}
+/* Proroga del termine (accordo scritto firmato prima della scadenza) */
+function raAntCondProroga(id){
+  const x=S.contrattiRA.find(s=>s.id===id);if(!raIsCond(x))return;
+  const base=raCondTermineBase(x),pr=x.condProroga||{};
+  const body=`<div class="note">${svg(IC.calendar||IC.shield)}<div>Il termine originario è il <b>${dmy(base)}</b> (${num(x.condMesi)||6} mesi dalla firma). La proroga vale solo con un accordo scritto firmato dalle due parti prima della scadenza (art. 1-bis).</div></div>
+    <div class="form-grid">
+      <div class="field"><label>Nuovo termine</label><input id="rcp-data" type="date" value="${pr.data||raAddMonthsIso(base,3)}"></div>
+      <div class="field"><label>Accordo firmato il</label><input id="rcp-acc" type="date" value="${pr.accordo||today()}"></div>
+      <div class="field col2"><label>Note</label><input id="rcp-note" value="${esc(pr.note||'')}"></div>
+      ${pr.data?`<div class="field col2"><button type="button" class="linklike" style="width:fit-content" onclick="closeModal();raAntCondProrogaTogli('${x.id}')">Togli la proroga</button></div>`:''}
+    </div>`;
+  openModal('Proroga del termine · contratto '+raNum(x),body,()=>{
+    const data=document.getElementById('rcp-data').value,acc=document.getElementById('rcp-acc').value;
+    if(!data||data<=base){toast('Il nuovo termine deve essere successivo al '+dmy(base));return false;}
+    if(acc&&acc>raCondTermine(x)&&!pr.data){toast('L\'accordo deve essere firmato prima della scadenza del termine ('+dmy(raCondTermine(x))+')');return false;}
+    x.condProroga={data,accordo:acc,note:document.getElementById('rcp-note').value.trim()};
+    logAction('Contratto R.A. '+raNum(x),'termine della condizione AUA prorogato al '+dmy(data));
+    persist();render();toast('Termine prorogato al '+dmy(data));setTimeout(()=>raAntScheda(x.id),0);return true;
+  },{submitLabel:'Salva proroga'});
+}
+function raAntCondProrogaTogli(id){const x=S.contrattiRA.find(s=>s.id===id);if(!x)return;x.condProroga=null;logAction('Contratto R.A. '+raNum(x),'proroga del termine AUA tolta');persist();render();toast('Proroga tolta');setTimeout(()=>raAntScheda(x.id),0);}
+/* Condizione non avverata (termine scaduto o diniego): il contratto si scioglie */
+function raAntCondNonAvverata(id){
+  const x=S.contrattiRA.find(s=>s.id===id);if(!raIsCond(x))return;
+  const st=raAntStato(x),k=st.k,f=raAntFattura(x),gg=num(x.condGiorni)||30,term=raCondTermine(x),t=today();
+  const rest=x.anticipoIncassato?k.ant:0;
+  const body=`<div class="note">${svg(IC.invoice)}<div>Il contratto si scioglie per mancato avveramento della condizione (art. 1-bis): <b>nota di credito per l'intera fattura</b>${f?` n. ${esc(f.numero)}/${esc(f.anno)}`:''} e <b>restituzione dell'anticipo ricevuto</b>, senza interessi, entro ${gg} giorni. La restituzione comparirà nello scadenzario.</div></div>
+    <div class="form-grid">
+      <div class="field"><label>Motivo</label><select id="rcn-motivo" onchange="document.getElementById('rcn-data').value=this.value==='condizione'?'${term<t?term:t}':'${t}'">
+        <option value="condizione" ${term<t?'selected':''}>Termine scaduto senza modifica AUA</option>
+        <option value="diniego" ${term<t?'':'selected'}>L'autorità ha negato la modifica</option></select></div>
+      <div class="field"><label>Data dello scioglimento</label><input id="rcn-data" type="date" value="${term<t?term:t}"><span class="hint">Scadenza del termine o data della comunicazione del diniego.</span></div>
+      <div class="field col2"><div class="totbox">
+        <div class="r"><span>Nota di credito: imponibile</span><span>€ ${eur(k.imp)}</span></div>
+        <div class="r"><span>Nota di credito: IVA ${qty(k.A)}%</span><span>€ ${eur(k.iva)}</span></div>
+        <div class="r grand"><span>Nota di credito totale</span><span>€ ${eur(k.tot)}</span></div>
+        <div class="r grand"><span>Anticipo da restituire</span><span>€ ${eur(rest)}</span></div>
+      </div>${x.anticipoIncassato?'':'<span class="hint">L\'anticipo non risulta incassato: non c\'è nulla da restituire.</span>'}</div>
+    </div>`;
+  openModal('Condizione non avverata · contratto '+raNum(x),body,()=>{
+    const data=document.getElementById('rcn-data').value||t,motivo=document.getElementById('rcn-motivo').value;
+    if(motivo==='condizione'&&data<term){toast('Il termine scade il '+dmy(term)+': prima di allora usa «L\'autorità ha negato la modifica»');return false;}
+    x.stato='chiuso';x.chiusura={data,motivo,tConf:0,tNon:k.Q,ncImp:k.imp,ncIva:k.iva,nc:k.tot,rest,scadRest:rest>0?raAddDaysIso(data,gg):'',restituito:''};
+    logAction('Contratto R.A. '+raNum(x)+' sciolto',`${motivo==='diniego'?'diniego della modifica AUA':'condizione AUA non avverata'} · nota di credito € ${eur(k.tot)} · restituzione € ${eur(rest)}`);
+    persist();render();toast('Contratto sciolto');return true;
+  },{wide:true,submitLabel:'Sciogli il contratto'});
+}
+function printContrattoRAAntCondBianco(){
+  raOpenPaged({type:'contrattoRA',id:'',doc:{},title:'Contratto R.A. con anticipo in attesa AUA — in bianco',filename:'Contratto_RA_anticipo_condizione_AUA_in_bianco',
+    email:{to:'',subject:'Contratto con anticipo sottoposto a condizione sospensiva (modifica A.U.A.)',body:''}},
+    raAntDocHtml({...RA_ANT_DEF,condAUA:true,condMesi:6,condGiorni:30,omologhe:[]},{blank:true,testi:raAntTestiModello(true)}),'');
+}
 function raMeseLab(ym){const [y,m]=String(ym||'').split('-');return (RA_MESI[(+m||1)-1]||'')+' '+(y||'');}
 function raEndOfMonth(ym){const [y,m]=String(ym).split('-').map(Number);return new Date(Date.UTC(y,m,0)).toISOString().slice(0,10);}
 function raAddDaysIso(iso,n){if(!iso)return '';const d=new Date(String(iso).slice(0,10)+'T00:00:00Z');if(isNaN(d))return '';d.setUTCDate(d.getUTCDate()+(parseInt(n)||0));return d.toISOString().slice(0,10);}
@@ -3973,11 +4127,16 @@ function raAntStato(x){
   const maturato=round2(k.ant+rateMat),incassato=round2((antInc?k.ant:0)+ratePag);
   const residuoFatt=Math.max(0,round2(k.tot-maturato));
   const dateConf=raAntConf(x).map(c=>c.data).filter(Boolean).sort();
-  const lastData=dateConf.length?dateConf[dateConf.length-1]:(x.data||'');
+  const cond=raIsCond(x),eff=cond?raCondEfficacia(x):'';
+  const lastData=dateConf.length?dateConf[dateConf.length-1]:(cond?eff:(x.data||''));
   const mesiIn=num(x.mesiInattivita)||12;
   const chiusuraInatt=lastData?raAddMonthsIso(lastData,mesiIn):'';
   const avvisi=[];
   if(x.stato!=='chiuso'){
+    if(cond&&!eff){const term=raCondTermine(x),g=raGiorni(t,term);
+      if(g<0)avvisi.push({cls:'danger',txt:`Termine della condizione AUA scaduto il ${dmy(term)}: il contratto si scioglie (art. 1-bis). Registra «Condizione non avverata» per la nota di credito e la restituzione dell'anticipo entro ${num(x.condGiorni)||30} giorni, oppure la proroga firmata.`});
+}
+    if(cond){const pre=raAntConf(x).filter(c=>!eff||(c.data||'')<eff).length;if(pre)avvisi.push({cls:'danger',txt:`${pre} formulari con data precedente all'efficacia del contratto: verificali.`});}
     if(k.Q>0&&tConf>=k.Q)avvisi.push({cls:'ok',txt:'Quantitativo massimo raggiunto: puoi fare il conteggio finale e chiudere il contratto.'});
     else if(k.Q>0&&tConf>=0.9*k.Q)avvisi.push({cls:'warn',txt:`Conferito il ${Math.floor(tConf/k.Q*100)}% del quantitativo massimo: restano ${qty(tRes)} t.`});
     if(chiusuraInatt&&chiusuraInatt<=t&&tConf<k.Q)avvisi.push({cls:'danger',txt:`Nessuno scarico da ${mesiIn} mesi (ultimo riferimento: ${dmy(lastData)}): il contratto va chiuso con il conteggio di chiusura (art. 3).`});
@@ -3988,7 +4147,7 @@ function raAntStato(x){
     if(!antInc&&k.ant>0)avvisi.push({cls:'warn',txt:'Anticipo non ancora registrato come incassato: i conferimenti iniziano dopo l\'accredito.'});
     if(oltre>0)avvisi.push({cls:'danger',txt:`Formulari oltre il quantitativo massimo: ${qty(oltre)} t non coperte dal contratto (serve un atto aggiuntivo).`});
   }
-  return {k,mesi,tReal,tConf,tRes,oltre,rateMat,ratePag,antInc,maturato,incassato,residuoFatt,lastData,chiusuraInatt,avvisi};
+  return {k,mesi,tReal,tConf,tRes,oltre,rateMat,ratePag,antInc,maturato,incassato,residuoFatt,lastData,chiusuraInatt,avvisi,cond,eff};
 }
 /* Conteggio di chiusura anticipata: nota di credito per la quantità non conferita e restituzione della quota di anticipo */
 function raAntChiusuraCalc(x,st){
@@ -3998,17 +4157,20 @@ function raAntChiusuraCalc(x,st){
   const rest=k.Q>0?round2(k.ant*tNon/k.Q):0;
   return {tNon,ncImp,ncIva,nc,rest};
 }
-function raAntNuovo(){const n=nextNumber('contrattoRA');return {id:uid(),...RA_ANT_DEF,data:today(),numero:n.numero,anno:n.anno,pagine:'',omologhe:[],allegati:[],testi:raAntTestiModello()};}
+function raAntNuovo(cond){const n=nextNumber('contrattoRA');return {id:uid(),...RA_ANT_DEF,data:today(),numero:n.numero,anno:n.anno,pagine:'',omologhe:[],allegati:[],testi:raAntTestiModello(cond),...(cond?{condAUA:true,condMesi:6,condGiorni:30}:{})};}
 
 /* ---- Editor ---- */
 function raSceltaTipo(){
   const card=(tit,txt,fn)=>`<button type="button" class="btn" style="display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:14px;text-align:left;white-space:normal;height:auto;line-height:1.4" onclick="closeModal();setTimeout(()=>${fn}(),0)">
       <b style="font-size:14px">${tit}</b><span class="sub" style="font-weight:400">${txt}</span></button>`;
   openModal('Nuovo contratto R.A.',`<div class="note">${svg(IC.contract)}<div>Scegli il tipo di contratto per il conferimento di terre e rocce da scavo.</div></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
       ${card('Standard','Il contratto R.A. già presente nel gestionale: un cantiere con rapporto di prova, prezzi per unità di misura, pagamento con la modalità scelta.','openContrattoRAStd')}
       ${card('Con anticipo','Una fattura per l\'intero quantitativo alla firma, anticipo e rate mensili sulle tonnellate dei formulari. Più cantieri, ciascuno con la sua scheda di omologa.','openContrattoRAAnt')}
-    </div>`,()=>true,{submitLabel:'Chiudi'});
+      ${card('Con anticipo — in attesa AUA','Come il contratto con anticipo, ma sotto condizione sospensiva: firma e anticipo subito; conferimenti, quantitativo e 12 mesi dalla comunicazione della modifica AUA. Se non arriva entro 6 mesi il contratto si scioglie e l\'anticipo si restituisce.','openContrattoRAAntCond')}
+    </div>`,()=>true,{submitLabel:'Chiudi',wide:true});
+}
+function openContrattoRAAntCond(){openContrattoRAAnt(null,{cond:true});
 }
 function raOmRow(o){
   o=o||{};const id=o.id||uid();
@@ -4061,14 +4223,16 @@ function raAntFormCalc(){
     <div class="r"><span>Da pagare in rate mensili</span><span>€ ${eur(k.saldo)}</span></div>
     <div class="r grand"><span>Rata per tonnellata</span><span>€ ${eur(k.unit)}</span></div>`;
 }
-function openContrattoRAAnt(id){
+function openContrattoRAAnt(id,opt){
   const rec=id?S.contrattiRA.find(s=>s.id===id):null;
-  const x=rec?{...RA_ANT_DEF,...rec}:raAntNuovo();
+  const cond=rec?!!rec.condAUA:!!(opt&&opt.cond);
+  const x=rec?{...RA_ANT_DEF,...rec}:raAntNuovo(cond);
+  const campiT=[...(cond?RA_ANT_COND_CAMPI:RA_ANT_CAMPI),...RA_ANT_ALL_CAMPI];
   raFiles=(x.allegati||[]).map(a=>({...a}));
   const cliOpts=`<option value="">— scegli dall'anagrafica clienti —</option>`+S.clienti.filter(c=>!c.isAzienda).map(c=>`<option value="${c.id}" ${x.clienteId===c.id?'selected':''}>${esc(c.ragioneSociale)}</option>`).join('');
   const om=(x.omologhe||[]).map(o=>raOmRow(o)).join('')||`<div class="sub ra-om-empty" style="margin-bottom:8px">Nessun cantiere: puoi aggiungerli anche dopo la firma, prima del primo carico.</div>`;
   const body=`
-    <div class="note">${svg(IC.contract)}<div><b>Contratto con anticipo.</b> Alla firma si fattura l'intero quantitativo; il cliente versa l'anticipo e poi paga ogni mese le tonnellate dei formulari. Tutti gli importi sono modificabili.</div></div>
+    <div class="note">${svg(IC.contract)}<div>${cond?`<b>Contratto con anticipo in attesa della modifica AUA.</b> Alla firma si fattura l'intero quantitativo e il cliente versa l'anticipo; conferimenti, quantitativo e mesi senza scarichi partono dalla comunicazione della modifica AUA (art. 1-bis). Se non arriva entro il termine, il contratto si scioglie: nota di credito e restituzione dell'anticipo.`:`<b>Contratto con anticipo.</b> Alla firma si fattura l'intero quantitativo; il cliente versa l'anticipo e poi paga ogni mese le tonnellate dei formulari.`} Tutti gli importi sono modificabili.</div></div>
     <div class="form-grid">
       <div class="field"><label>Data (Roma, lì)</label><input id="ran-data" type="date" value="${x.data||''}"></div>
       <div class="field"><label>Contratto n°</label><input id="ran-numero" type="number" value="${esc(x.numero||'')}"><span class="hint">Stessa numerazione dei contratti R.A.</span></div>
@@ -4098,6 +4262,13 @@ function openContrattoRAAnt(id){
       <div class="field"><label>Rate: giorni dalla fine del mese</label><input id="ran-gg" type="number" value="${esc(x.giorniPag)}"></div>
       <div class="field"><label>Rendiconto: invio entro il giorno</label><input id="ran-rendg" type="number" value="${esc(x.rendGiorno)}"></div>
       <div class="field"><label>Chiusura dopo mesi senza scarichi</label><input id="ran-inatt" type="number" value="${esc(x.mesiInattivita)}"></div>
+${cond?`
+      <div class="section-label">Condizione sospensiva — modifica dell'A.U.A. (art. 1-bis)</div>
+      <div class="field col2"><label>Comunicazione di modifica non sostanziale (estremi)</label><input id="ran-auacom" value="${esc(x.auaComunicazione||'')}" placeholder="Es. prot. n. … del … (presentata all'autorità competente)"></div>
+      <div class="field col2"><label>Oggetto della modifica</label><input id="ran-auaogg" value="${esc(x.auaOggetto||'')}" placeholder="Es. aumento dei quantitativi annui di recupero R10"></div>
+      <div class="field"><label>Termine: mesi dalla firma</label><input id="ran-condmesi" type="number" value="${esc(x.condMesi||6)}"></div>
+      <div class="field"><label>Restituzione anticipo entro giorni</label><input id="ran-condgg" type="number" value="${esc(x.condGiorni||30)}"></div>
+      <div class="field col2"><span class="hint">Conferimenti, quantitativo e mesi senza scarichi partono dalla data della PEC con cui comunichi al cliente la modifica AUA: la registri dalla «Scheda» del contratto. Lì trovi anche la proroga del termine e lo scioglimento se la condizione non si avvera.</span></div>`:''}
 
       <div class="section-label">Cantieri — schede di omologa (Allegato A)</div>
       <div class="field col2"><div id="ran-om">${om}</div>
@@ -4105,9 +4276,9 @@ function openContrattoRAAnt(id){
         <span class="hint">Il test di cessione vale 12 mesi dalla data del rapporto di prova (art. 9 D.M. 5/2/1998): la scadenza viene proposta da sola e si può modificare.</span></div>
 
       <div class="section-label">Testi del contratto (modificabili)</div>
-      ${raAntDatiHint()}
-      ${raAntCampiHtml(raAntTesti(x),'rant',[...RA_ANT_CAMPI,...RA_ANT_ALL_CAMPI])}
-      <div class="field col2"><button type="button" class="linklike" style="width:fit-content" onclick="raAntTestiRipristina()">Ripristina i testi del modello</button>
+      ${raAntDatiHint(cond)}
+      ${raAntCampiHtml(raAntTesti(x),'rant',campiT)}
+      <div class="field col2"><button type="button" class="linklike" style="width:fit-content" onclick="raAntTestiRipristina(${cond})">Ripristina i testi del modello</button>
         <span class="hint">I testi valgono solo per questo contratto. Il modello per i nuovi contratti si modifica in «Documenti per il cliente».</span></div>
 
       <div class="section-label">Altro</div>
@@ -4116,7 +4287,7 @@ function openContrattoRAAnt(id){
         <label class="btn sm" style="width:fit-content">${svg(IC.clip)} Aggiungi file<input type="file" multiple style="display:none" onchange="raAddFiles(this)"></label>
         <div id="ra-att" class="att-list"></div></div>
     </div>`;
-  openModal(`${rec?'Modifica':'Nuovo'} contratto R.A. con anticipo`,body,()=>{
+  openModal(`${rec?'Modifica':'Nuovo'} contratto R.A. con anticipo${cond?' — in attesa AUA':''}`,body,()=>{
     const v=i=>{const el=document.getElementById(i);return el?el.value.trim():'';};
     const clienteId=v('ran-cliente');const cli=clienteById(clienteId);
     if(!cli){toast('Scegli il cliente');return false;}
@@ -4136,7 +4307,8 @@ function openContrattoRAAnt(id){
       clienteId,ditta:cli.ragioneSociale||'',firmaCava:v('ran-firmacava'),firmaCliente:v('ran-firmacli'),
       codiceCer:v('ran-cer'),descrizioneCer:v('ran-cerdesc'),prezzoT,aliquotaIva:v('ran-iva')===''?22:num(v('ran-iva')),quantitaMax,anticipoTipo,anticipoValore,
       giorniPag:num(v('ran-gg'))||60,rendGiorno:num(v('ran-rendg'))||5,mesiInattivita:num(v('ran-inatt'))||12,
-      note:v('ran-note'),allegati:raFiles.map(f=>({...f})),testi:raAntTestiRead('rant',[...RA_ANT_CAMPI,...RA_ANT_ALL_CAMPI])};
+      note:v('ran-note'),allegati:raFiles.map(f=>({...f})),testi:raAntTestiRead('rant',campiT)};
+    if(cond)Object.assign(data,{condAUA:true,auaComunicazione:v('ran-auacom'),auaOggetto:v('ran-auaogg'),condMesi:num(v('ran-condmesi'))||6,condGiorni:num(v('ran-condgg'))||30});
     const nn=raNum(data);let seq=Math.max(0,...(x.omologhe||[]).map(o=>num(o.seq)));
     data.omologhe=omologhe.map(o=>{if(!o.seq){seq++;o.seq=seq;}o.numero=nn+'-'+String(o.seq).padStart(2,'0');return o;});
     // campi comuni, per elenco, ricerca e registro dei contratti R.A.
@@ -4147,7 +4319,7 @@ function openContrattoRAAnt(id){
     if(rec&&fatt){const a=raAntCalc(rec),b=raAntCalc(data);if(a.tot!==b.tot)setTimeout(()=>toast('Attenzione: il totale è cambiato ma la fattura alla firma n. '+fatt.numero+'/'+fatt.anno+' è già creata: verificala'),400);}
     if(rec){const i=S.contrattiRA.findIndex(s=>s.id===rec.id);S.contrattiRA[i]=data;}else S.contrattiRA.push(data);
     commitNumber('contrattoRA',data.anno,parseInt(data.numero)||0);
-    logAction(rec?'Contratto R.A. con anticipo modificato':'Contratto R.A. con anticipo creato',raNum(data)+' · '+(data.ditta||''));
+    logAction((rec?'Contratto R.A. con anticipo modificato':'Contratto R.A. con anticipo creato')+(cond?' (in attesa AUA)':''),raNum(data)+' · '+(data.ditta||''));
     persist();render();toast('Contratto salvato');return true;
   },{wide:true,submitLabel:'Salva contratto'});
   raAttList();raAntFormCalc();
@@ -4163,7 +4335,8 @@ function raAntScheda(id){
   const perOm={};raAntConf(x).forEach(c=>{const o=c.omologaId||'';(perOm[o]=perOm[o]||{n:0,t:0});perOm[o].n++;perOm[o].t+=confTonnellate(c);});
   const chiuso=x.stato==='chiuso';
   const body=`
-    ${chiuso?`<div class="note">${svg(IC.shield)}<div><b>Contratto chiuso</b> il ${dmy((x.chiusura||{}).data)}${(x.chiusura||{}).motivo?' — '+esc(RA_MOTIVI[(x.chiusura||{}).motivo]||x.chiusura.motivo):''}.</div></div>`:''}
+    ${chiuso?`<div class="note">${svg(IC.shield)}<div><b>Contratto ${['condizione','diniego'].includes((x.chiusura||{}).motivo)?'sciolto':'chiuso'}</b> il ${dmy((x.chiusura||{}).data)}${(x.chiusura||{}).motivo?' — '+esc(RA_MOTIVI[(x.chiusura||{}).motivo]||x.chiusura.motivo):''}.</div></div>`:''}
+    ${raCondBlocco(x)}
     ${st.avvisi.map(a=>`<div class="note" style="${a.cls==='danger'?'border-color:var(--danger)':''}"><span class="pill ${a.cls}">${a.cls==='ok'?'OK':(a.cls==='danger'?'Attenzione':'Avviso')}</span><div>${esc(a.txt)}</div></div>`).join('')}
     <div class="stat-grid" style="grid-template-columns:repeat(4,1fr)">
       ${stat('Tonnellate conferite',qty(st.tConf)+' t',`su ${qty(k.Q)} t · ${Math.floor(pct)}% · restano ${qty(st.tRes)} t`)}
@@ -4175,9 +4348,9 @@ function raAntScheda(id){
       ${btn(svg(IC.print,1.9)+' Stampa contratto',`closeModal();printContrattoRA('${x.id}')`)}
       ${btn(svg(IC.invoice,1.9)+(f?' Apri fattura':' Crea fattura alla firma'),`closeModal();raAntFatturaFirma('${x.id}')`,f?'':'primary')}
       ${btn(st.antInc?'Anticipo incassato il '+dmy(x.anticipoIncassato.data)+' ✓':'Segna anticipo incassato',`raAntToggleAnticipo('${x.id}');raAntScheda('${x.id}')`)}
-      ${chiuso?'':btn(svg(IC.plus,1.9)+' Registra formulario',`closeModal();setTimeout(()=>openConferimento(null,{raId:'${x.id}'}),0)`)}
+      ${chiuso||(st.cond&&!st.eff)?'':btn(svg(IC.plus,1.9)+' Registra formulario',`closeModal();setTimeout(()=>openConferimento(null,{raId:'${x.id}'}),0)`)}
       ${btn(svg(IC.doc,1.9)+' Rendiconto mensile',`raAntRendicontoScegli('${x.id}')`)}
-      ${chiuso?btn('Riapri contratto',`raAntRiapri('${x.id}')`):btn('Conteggio di chiusura',`raAntChiudiDialog('${x.id}')`)}
+      ${chiuso?btn('Riapri contratto',`raAntRiapri('${x.id}')`):(st.cond&&!st.eff?'':btn('Conteggio di chiusura',`raAntChiudiDialog('${x.id}')`))}
     </div>
     <div class="section-label">Rate mensili (dai formulari)</div>
     ${st.mesi.length?`<table><thead><tr><th>Mese</th><th class="num">Formulari</th><th class="num">Tonnellate</th><th class="num">Rata</th><th>Scadenza</th><th></th></tr></thead><tbody>
@@ -4191,7 +4364,7 @@ function raAntScheda(id){
         return `<tr><td class="strong">${esc(o.numero||'')}</td><td>${esc(o.cantiere||'')}</td><td class="sub">${esc(o.produttore||'—')}</td>
         <td>${o.validoFino?`<span class="pill ${g<0?'danger':(g<=30?'warn':'ok')}">${dmy(o.validoFino)}</span>`:'<span class="sub">—</span>'}</td><td class="num">${p.n}</td><td class="num">${qty(raR3(p.t))}</td></tr>`;}).join('')}
       </tbody></table>`:`<div class="sub">Nessun cantiere: aggiungilo con «Modifica» prima del primo carico.</div>`}`;
-  openModal(`Contratto R.A. con anticipo ${raNum(x)} · ${x.ditta||''}`,body,()=>true,{wide:true,submitLabel:'Chiudi'});
+  openModal(`Contratto R.A. con anticipo${st.cond?' (condizione AUA)':''} ${raNum(x)} · ${x.ditta||''}`,body,()=>true,{wide:true,submitLabel:'Chiudi'});
 }
 function raAntToggleAnticipo(id){const x=S.contrattiRA.find(s=>s.id===id);if(!x)return;
   x.anticipoIncassato=x.anticipoIncassato?'':{data:today(),importo:raAntCalc(x).ant};
@@ -4212,7 +4385,7 @@ function raAntFatturaFirma(id){
   const k=raAntCalc(x),nn=raNum(x);
   const pag=(S.modalitaPagamento.find(p=>/bonifico/i.test(p.nome))||{}).nome||'';
   openFatturaForm(null,{__raLink:x.id,clienteId:x.clienteId,data:today(),modalitaPagamento:pag,scadenza:x.data||today(),
-    causaleManuale:`Contratto con anticipo n. ${nn} del ${dmy(x.data)}`,
+    causaleManuale:`Contratto con anticipo n. ${nn} del ${dmy(x.data)}${x.condAUA?' (sotto condizione sospensiva, art. 1-bis)':''}`,
     righe:[{descrizione:`Conferimento terre e rocce da scavo E.E.R. ${x.codiceCer||'17 05 04'} per recupero ambientale R10 — contratto con anticipo n. ${nn} del ${dmy(x.data)} — quantitativo massimo ${qty(k.Q)} t`,
       um:'Tonnellate',quantita:k.Q,prezzoUnitario:k.P,aliquotaIva:k.A,descManuale:true}],
     note:`Pagamento come da contratto n. ${nn}: anticipo di € ${eur(k.ant)} alla firma; saldo di € ${eur(k.saldo)} in rate mensili pari alle tonnellate conferite nel mese × € ${eur(k.unit)}, con bonifico a ${num(x.giorniPag)||60} giorni dalla fine del mese di conferimento.`});
@@ -4220,7 +4393,9 @@ function raAntFatturaFirma(id){
 }
 
 /* ---- Chiusura ---- */
-const RA_MOTIVI={quantita:'quantitativo massimo raggiunto',inattivita:'mesi senza scarichi (art. 3)',risoluzione:'risoluzione (art. 11)',altro:'altro motivo'};
+const RA_MOTIVI={quantita:'quantitativo massimo raggiunto',inattivita:'mesi senza scarichi (art. 3)',risoluzione:'risoluzione (art. 11)',altro:'altro motivo',
+  condizione:'condizione AUA non avverata entro il termine (art. 1-bis)',diniego:'diniego della modifica AUA (art. 1-bis)'};
+const RA_MOTIVI_CHIUSURA=['quantita','inattivita','risoluzione','altro'];
 function raAntChiudiDialog(id){
   const x=S.contrattiRA.find(s=>s.id===id);if(!x)return;
   const st=raAntStato(x),c=raAntChiusuraCalc(x,st),f=raAntFattura(x);
@@ -4228,7 +4403,7 @@ function raAntChiudiDialog(id){
   const body=`<div class="note">${svg(IC.invoice)}<div>Conteggio finale (art. 9). La nota di credito va emessa sulla fattura alla firma${f?` n. ${esc(f.numero)}/${esc(f.anno)}`:''}; la restituzione dell'anticipo entro 60 giorni comparirà nello scadenzario.</div></div>
     <div class="form-grid">
       <div class="field"><label>Data di chiusura</label><input id="rac-data" type="date" value="${today()}"></div>
-      <div class="field"><label>Motivo</label><select id="rac-motivo">${Object.entries(RA_MOTIVI).map(([k2,l])=>`<option value="${k2}" ${k2===motivoDef?'selected':''}>${esc(l)}</option>`).join('')}</select></div>
+      <div class="field"><label>Motivo</label><select id="rac-motivo">${Object.entries(RA_MOTIVI).filter(([k2])=>RA_MOTIVI_CHIUSURA.includes(k2)).map(([k2,l])=>`<option value="${k2}" ${k2===motivoDef?'selected':''}>${esc(l)}</option>`).join('')}</select></div>
       <div class="field col2"><div class="totbox">
         <div class="r"><span>Tonnellate conferite</span><span>${qty(st.tConf)} t su ${qty(st.k.Q)} t</span></div>
         <div class="r"><span>Tonnellate non conferite</span><span>${qty(c.tNon)} t</span></div>
@@ -4304,6 +4479,8 @@ function raAntDatiMancanti(x){
   else [['indirizzo','indirizzo'],['pec','PEC'],['email','e-mail'],['telefono','telefono']].forEach(([k2,l])=>{if(!String(c[k2]||'').trim())m.push(l+' del cliente');});
   if(c&&!String(c.partitaIva||c.codiceFiscale||'').trim())m.push('P.IVA o codice fiscale del cliente');
   if(!String(a.iban||'').trim())m.push('IBAN di Cava (dati azienda)');
+  if(x.condAUA&&!String(x.auaComunicazione||'').trim())m.push('estremi della comunicazione di modifica AUA');
+  if(x.condAUA&&!String(x.auaOggetto||'').trim())m.push('oggetto della modifica AUA');
   return m;
 }
 /* Impaginazione a pagine A4 fisse: larghezza 680px = 180 mm; altezza utile ~1000px (stampa 271 mm, PDF 273 mm).
@@ -4379,7 +4556,11 @@ function raAntDocHtml(x,opt){
     imponibile:F(eur(k.imp),70),iva:F(eur(k.iva),60),totale:F(eur(k.tot),70),anticipo:ant,giornoRendiconto:F(rg,24),rata:'<b>'+F(eur(k.unit),50)+'</b>',
     esempioRata:blank?'':((x.anticipoTipo==='iva'||!x.anticipoTipo)?"È pari al prezzo, perché l'anticipo è pari all'IVA. ":'')+`Esempio: con ${qty(tEs)} t conferite nel mese la rata è di € ${eur(round2(tEs*k.unit))}.`,
     giorniPagamento:'<b>'+F(gg,30)+'</b>',iban:'<b>'+vuoto(a.iban)+'</b>',
-    esempioChiusura:blank?'':`Esempio: con chiusura a ${qty(tChiusa)} t, nota di credito di € ${eur(es.nc)} e restituzione di € ${eur(es.rest)}.`};
+    esempioChiusura:blank?'':`Esempio: con chiusura a ${qty(tChiusa)} t, nota di credito di € ${eur(es.nc)} e restituzione di € ${eur(es.rest)}.`,
+    auaCom:(!blank&&String(x.auaComunicazione||'').trim())?e(x.auaComunicazione):'<span class="ra-fill" style="min-width:200px"></span>',
+    auaOgg:(!blank&&String(x.auaOggetto||'').trim())?e(x.auaOggetto):'<span class="ra-fill" style="min-width:200px"></span>',
+    condMesi:F(num(x.condMesi)||6,24),condGiorni:F(num(x.condGiorni)||30,24),
+    condTermine:(!blank&&x.data)?dmy(raAddMonthsIso(x.data,num(x.condMesi)||6)):'<span class="ra-fill" style="min-width:90px"></span>'};
   const blocchi={
     tabellaRifiuto:`<table class="ra-tab"><thead><tr><th style="width:110px">Codice E.E.R.</th><th>Definizione dei materiali</th><th>Operazione</th></tr></thead>
       <tbody><tr><td>${e(x.codiceCer||'17 05 04')}</td><td>${e(x.descrizioneCer||RA_ANT_DEF.descrizioneCer)}</td><td>R10 — D.M. 5/2/1998, punto 7.31 bis</td></tr></tbody></table>`,
@@ -4415,7 +4596,7 @@ function raAntDocHtml(x,opt){
       <p class="ra-p">${raAntInline(t.approvazione,vars)}</p>
       <div class="firme-2" style="margin-top:6px"><div></div><div><div class="ra-firma">Per accettazione — Il Conferitore</div><div class="ra-firma-line"></div><div class="ra-firma-cap">(timbro e firma)</div></div></div>
     </div>
-    <div class="ra-pie">${e(RA_DEF.piePagina)} · Contratto con anticipo per il conferimento — EER ${e(x.codiceCer||'17 05 04')}</div>
+    <div class="ra-pie">${e(RA_DEF.piePagina)} · Contratto con anticipo${x.condAUA?' sotto condizione (modifica A.U.A.)':''} per il conferimento — EER ${e(x.codiceCer||'17 05 04')}</div>
     <div class="ra-h2" data-newpage="1">${raAntInline(t.allegatoTitolo,vars)}</div>
     <p class="ra-p">Contratto con anticipo n° ${raLinea(nn,90)} — Conferitore ${raLinea(blank?'':(c.ragioneSociale||x.ditta||''),220)}. Si compila una scheda per ogni cantiere, prima del primo carico.</p>
     ${oms.map(o=>raSchedaHtml(o,x,{esito:t.allegatoEsito,allegati:t.allegatoAllegati})).join('')}
@@ -4427,7 +4608,7 @@ function printContrattoRAAnt(id,force){
   const manca=raAntDatiMancanti(x);
   if(manca.length&&!force){confirmDialog('Dati mancanti in anagrafica','Mancano: '+manca.join(', ')+'. Nella stampa resteranno vuoti. Vuoi stampare comunque?',()=>setTimeout(()=>printContrattoRAAnt(id,true),0),'Stampa comunque');return;}
   const c=clienteById(x.clienteId)||{},nn=raNum(x);
-  raOpenPaged({type:'contrattoRA',id,doc:x,title:`Contratto R.A. con anticipo ${nn}`,filename:`Contratto_RA_anticipo_${String(nn).replace(/\W+/g,'-')}`,
+  raOpenPaged({type:'contrattoRA',id,doc:x,title:`Contratto R.A. con anticipo${x.condAUA?' (condizione AUA)':''} ${nn}`,filename:`Contratto_RA_anticipo_${String(nn).replace(/\W+/g,'-')}`,
     email:{to:c.pec||c.email||'',subject:`Contratto con anticipo per il conferimento di terre e rocce da scavo n. ${nn}`,
       body:`Buongiorno,\nin allegato il contratto con anticipo per il conferimento di terre e rocce da scavo (EER ${x.codiceCer||'17 05 04'}).\n\nCava Basalto Laghetto srl`}},raAntDocHtml(x),id);
 }
@@ -4457,9 +4638,10 @@ function raStampeBianco(){
   const card=(tit,txt,fn)=>`<button type="button" class="btn" style="display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:14px;text-align:left;white-space:normal;height:auto;line-height:1.4" onclick="closeModal();setTimeout(()=>${fn}(),0)">
       <b style="font-size:14px">${tit}</b><span class="sub" style="font-weight:400">${txt}</span></button>`;
   openModal('Stampa in bianco',`<div class="note">${svg(IC.print)}<div>Moduli senza dati del cliente e senza importi, da compilare a mano. I dati di Cava restano stampati.</div></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       ${card('Contratto standard','Il contratto R.A. di sempre con i campi del cliente, il cantiere, i prezzi e le quantità vuoti.','printContrattoRAStdBianco')}
       ${card('Contratto con anticipo','Tutto il contratto con i campi vuoti, più una scheda di omologa (Allegato A) in bianco.','printContrattoRAAntBianco')}
+      ${card('Con anticipo — in attesa AUA','Il contratto con anticipo sotto condizione sospensiva (modifica non sostanziale dell\'AUA), con i campi vuoti.','printContrattoRAAntCondBianco')}
       ${card('Allegato A','Solo la scheda di omologa del cantiere, da compilare per ogni nuovo cantiere.','printAllegatoABianco')}
     </div>`,()=>true,{submitLabel:'Chiudi',wide:true});
 }
@@ -4501,6 +4683,7 @@ Object.assign(RA_MOD_DEF,{
   },
   stdBianco:Object.fromEntries(RA_STD_CAMPI.map(([k])=>[k,RA_DEF[k]])),
   antBianco:Object.fromEntries(RA_ANT_CAMPI.map(([k])=>[k,RA_ANT_TESTI[k]])),
+  antCondBianco:Object.fromEntries(RA_ANT_COND_CAMPI.map(([k])=>[k,RA_ANT_COND_TESTI[k]])),
   allegatoA:{...RA_ALL_A_DEF}
 });
 /* del: il modello si può eliminare (nascondere; si ripristina in fondo all'elenco). I contratti e l'Allegato A si possono solo modificare. */
@@ -4510,6 +4693,7 @@ const RA_MODELLI=[
   {id:'md2',titolo:'Scheda di caratterizzazione di base — modulo Md2',desc:'Caratterizzazione di base del rifiuto e documentazione complementare, compilata dal produttore (Linee guida inerti Regione Lazio, D.G.R. 34/2012).',stampa:'printRAMd2',del:true,originale:'modelli/Md2_Regione_Lazio_originale.pdf'},
   {id:'stdBianco',titolo:'Contratto standard',desc:'Il contratto R.A. di sempre. I testi del modello valgono per i nuovi contratti e per la stampa in bianco.',stampa:'printContrattoRAStdBianco'},
   {id:'antBianco',titolo:'Contratto con anticipo',desc:'Articoli, clausole e approvazione specifica. I testi del modello valgono per i nuovi contratti e per la stampa in bianco.',stampa:'printContrattoRAAntBianco'},
+  {id:'antCondBianco',titolo:'Contratto con anticipo — in attesa AUA',desc:'Il contratto con anticipo sotto condizione sospensiva (modifica non sostanziale dell\'AUA, art. 1-bis). I testi del modello valgono per i nuovi contratti di questo tipo e per la stampa in bianco.',stampa:'printContrattoRAAntCondBianco'},
   {id:'allegatoA',titolo:'Allegato A — scheda di omologa',desc:'Una scheda per ogni nuovo cantiere; i testi valgono anche per l\'Allegato A dei nuovi contratti con anticipo.',stampa:'printAllegatoABianco'},
 ];
 function raModello(id){const st=((S.settings||{}).raModelli||{})[id]||{};return {...RA_MOD_DEF[id],...st};}
@@ -4593,15 +4777,16 @@ const RA_MOD_CAMPI={
   md2:[['titolo','Titolo'],['sottotitolo','Sottotitolo'],['testo','Testo della scheda',24,'Righe che iniziano con «## » = titolo di sezione; «___» = riga da compilare (anche più di una sulla stessa riga), «__» = riga corta; «[ ]» = casella da barrare; **testo** = grassetto.']],
   stdBianco:RA_STD_CAMPI,
   antBianco:RA_ANT_CAMPI,
+  antCondBianco:RA_ANT_COND_CAMPI,
   allegatoA:[['titolo','Titolo'],['sottotitolo','Sottotitolo (stampa in bianco)'],['intro','Introduzione (stampa in bianco)',4],['esito','Riga «Esito» della scheda',2],['allegati','Riga «Allegati» della scheda',2]]
 };
 function raModelloEdit(id){
   const m=raModello(id),info=RA_MODELLI.find(x=>x.id===id)||{};
-  const contratto=['stdBianco','antBianco','allegatoA'].includes(id);
+  const contratto=['stdBianco','antBianco','antCondBianco','allegatoA'].includes(id);
   const nota=contratto
     ?`I testi del modello valgono per i <b>nuovi contratti</b> e per la <b>stampa in bianco</b>. I contratti già creati conservano il loro testo: lo modifichi aprendo il contratto (sezione «Testi del contratto»). Puoi sempre ripristinare il testo originale.`
     :`I dati di Cava (intestazione e contatti) vengono dai dati azienda. Le modifiche valgono per tutte le stampe successive; puoi sempre ripristinare il testo originale.`;
-  let corpo=(id==='antBianco'?raAntDatiHint():'')+(RA_MOD_CAMPI[id]||[]).map(([k,lab,rows,hint])=>rows
+  let corpo=(id==='antBianco'||id==='antCondBianco'?raAntDatiHint(id==='antCondBianco'):'')+(RA_MOD_CAMPI[id]||[]).map(([k,lab,rows,hint])=>rows
       ?`<div class="field col2"><label>${lab}</label><textarea id="rm-${k}" rows="${rows}">${esc(m[k]||'')}</textarea>${hint?`<span class="hint">${hint}</span>`:''}</div>`
       :`<div class="field col2"><label>${lab}</label><input id="rm-${k}" value="${esc(m[k]||'')}"></div>`).join('');
   openModal(`Modifica testi · ${info.titolo||''}`,`<div class="note">${svg(IC.edit)}<div>${nota}</div></div><div class="form-grid">${corpo}</div>`,()=>{
@@ -5035,7 +5220,7 @@ function openConferimento(id,preset){
   const x=id?S.conferimenti.find(y=>y.id===id):{id:uid(),data:today(),eer:'17 05 04',descrizione:'Terre e rocce da scavo',produttore:'',cantiere:'',quantita:'',um:(S.unitaMisura[0]&&S.unitaMisura[0].nome)||'Metri cubi',rapporto:'',note:'',...(preset||{})};
   if(x.raId&&!id&&S.unitaMisura.some(u=>u.nome==='Tonnellate'))x.um='Tonnellate';
   const raList=(S.contrattiRA||[]).filter(r=>raIsAnt(r)&&(r.stato!=='chiuso'||r.id===x.raId));
-  const raOpts=`<option value="">— nessuno —</option>`+raList.map(r=>`<option value="${r.id}" ${x.raId===r.id?'selected':''}>${esc(raNum(r))} · ${esc(r.ditta||'')}</option>`).join('');
+  const raOpts=`<option value="">— nessuno —</option>`+raList.map(r=>`<option value="${r.id}" ${x.raId===r.id?'selected':''}>${esc(raNum(r))} · ${esc(r.ditta||'')}${raIsCond(r)&&!raCondEfficacia(r)?' (in attesa AUA)':''}</option>`).join('');
   const umOpts=S.unitaMisura.map(u=>`<option ${x.um===u.nome?'selected':''}>${esc(u.nome)}</option>`).join('');
   const cliList=S.clienti.filter(cl=>!cl.isAzienda).map(cl=>`<option value="${esc(clienteName(cl.id))}">`).join('');
   const body=`<div class="form-grid">
@@ -5066,6 +5251,9 @@ function openConferimento(id,preset){
       const om=ra&&(ra.omologhe||[]).find(o=>o.id===data.omologaId);
       if(ra&&(ra.omologhe||[]).length&&!om){toast('Scegli il cantiere (omologa) del formulario');return false;}
       if(om&&om.validoFino&&data.data>om.validoFino)setTimeout(()=>toast('Attenzione: le analisi del cantiere sono scadute il '+dmy(om.validoFino)),400);
+      if(ra&&raIsCond(ra)){const eff=raCondEfficacia(ra);
+        if(!eff){toast(`Il contratto ${raNum(ra)} non è ancora efficace: registra prima la comunicazione della modifica AUA (Scheda del contratto)`);return false;}
+        if(data.data<eff){toast(`Il formulario è precedente alla data di efficacia del contratto (${dmy(eff)})`);return false;}}
       if(ra&&data.data<(ra.data||''))setTimeout(()=>toast('Attenzione: il formulario è precedente alla firma del contratto'),400);
     }
     if(id){const i=S.conferimenti.findIndex(y=>y.id===id);S.conferimenti[i]=data;}else S.conferimenti.push(data);

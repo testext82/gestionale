@@ -826,7 +826,7 @@ function openDiagnostica(){
 /* ===================== DIAGNOSTICA (Impostazioni) =====================
    Registro degli eventi salvato su questo dispositivo (ultime 300 righe): avvio, errori, sincronizzazione,
    invio degli allegati. In Impostazioni: stato dell'app, controlli sui dati, test delle funzioni, copia del rapporto. */
-const APP_BUILD='26/11/2026 12:01';
+const APP_BUILD='26/11/2026 12:18';
 const DIAG_KEY='cbl_diag_log';
 let diagSyncUltimo='';let sbUltimoOk=0;
 function diagRighe(){try{return JSON.parse(localStorage.getItem(DIAG_KEY)||'[]');}catch(e){return [];}}
@@ -3788,7 +3788,7 @@ Le quantità mensili non sono prestabilite: il Conferitore scarica secondo le es
 Il Gestore garantisce il ritiro a recupero delle quantità concordate. Fanno eccezione i casi di interruzione dell'attività di recupero e i limiti quantitativi autorizzati dell'impianto.`,
   art3:`Il contratto non ha un termine di durata: resta in vigore fino al conferimento del quantitativo massimo.
 Il contratto si chiude comunque se per [mesi] mesi consecutivi non ci sono conferimenti. I mesi si contano dall'ultimo scarico o, se non c'è stato alcuno scarico, dalla firma.
-Il Gestore comunica la chiusura via PEC. Si applica l'art. 9.`,
+Quando il contratto si chiude per mancanza di conferimenti, il Gestore lo comunica al Conferitore via PEC. Si fa quindi il conteggio finale dell'art. 9: il Conferitore paga solo le tonnellate conferite; per quelle non conferite il Gestore emette nota di credito e restituisce la quota di anticipo corrispondente.`,
   art4:`Prima del primo carico da un cantiere, il Conferitore invia al Gestore la scheda di omologa (Allegato A), compilata e firmata.
 Per il conferimento deve essere effettuata la caratterizzazione del rifiuto attraverso il campionamento e l'analisi chimica del materiale da laboratorio accreditato ACCREDIA a norma UNI CEI EN ISO/IEC 17025. Il materiale deve essere conforme a quanto previsto dalla legge. Con la scheda il Conferitore presenta i seguenti documenti:
 Il cantiere è attivo solo dopo l'accettazione scritta del Gestore, che assegna un numero di omologa. Il numero va riportato su ogni formulario. Il Gestore non accetta carichi da cantieri non attivi.
@@ -3829,7 +3829,7 @@ In caso di risoluzione restano dovute le rate dei conferimenti già eseguiti. La
 const RA_ANT_COND_TESTI={...RA_ANT_TESTI,
   titolo:'CONTRATTO CON ANTICIPO PER IL CONFERIMENTO DI TERRE E ROCCE DA SCAVO SOTTOPOSTO A CONDIZIONE SOSPENSIVA',
   premesse:`Il Gestore esercita l'attività di recupero ambientale R10 nel sito di Via Casilina Km 22,500, Monte Compatri (RM): comunicazione di inizio attività prot. Provincia di Roma n° 63619 del 19/04/2010; A.U.A. (Autorizzazione Unica Ambientale) R.U. 746 del 28/02/2018.
-Il Gestore ha presentato all'autorità competente la comunicazione di modifica non sostanziale dell'A.U.A. [comunicazione AUA], relativa a [oggetto modifica AUA] (art. 6 del D.P.R. 59/2013). I conferimenti previsti da questo contratto presuppongono l'efficacia di tale modifica.
+Il Gestore ha presentato all'autorità competente la comunicazione di modifica non sostanziale dell'A.U.A. I conferimenti previsti da questo contratto presuppongono l'efficacia di tale modifica.
 Il Conferitore esegue lavori in più cantieri e intende conferire al Gestore le terre e rocce da scavo prodotte, classificate EER [codice EER], senza individuare oggi uno specifico cantiere.
 Le Parti stipulano quindi un contratto con anticipo, in forma di contratto aperto, sottoposto alla condizione sospensiva dell'art. 1-bis. Il contratto fissa prezzo e quantitativo massimo, senza termine di durata, salvo la chiusura dopo [mesi] mesi senza scarichi. Il corrispettivo è fatturato per intero alla firma; si paga con un anticipo e con rate mensili sulle quantità effettivamente conferite.
 Ogni cantiere si aggiunge con la scheda di omologa dell'Allegato A, con i documenti richiesti dagli artt. 8 e 9 del D.M. 5/2/1998.
@@ -3842,7 +3842,7 @@ Se la condizione non si avvera entro il termine, eventualmente prorogato, o se p
   art2:RA_ANT_TESTI.art2.replace('per tutti i cantieri insieme.','per tutti i cantieri insieme, a partire dalla data di efficacia (art. 1-bis).'),
   art3:`Il contratto non ha un termine di durata: dalla data di efficacia (art. 1-bis) resta in vigore fino al conferimento del quantitativo massimo.
 Il contratto si chiude comunque se per [mesi] mesi consecutivi non ci sono conferimenti. I mesi si contano dall'ultimo scarico o, se non c'è stato alcuno scarico, dalla data di efficacia.
-Il Gestore comunica la chiusura via PEC. Si applica l'art. 9.`,
+Quando il contratto si chiude per mancanza di conferimenti, il Gestore lo comunica al Conferitore via PEC. Si fa quindi il conteggio finale dell'art. 9: il Conferitore paga solo le tonnellate conferite; per quelle non conferite il Gestore emette nota di credito e restituisce la quota di anticipo corrispondente.`,
   art8_2:"Alla firma il Conferitore versa con bonifico un anticipo [anticipo]. I conferimenti iniziano dalla data di efficacia (art. 1-bis), dopo l'accredito dell'anticipo. Se la condizione non si avvera, l'anticipo è restituito come previsto dall'art. 1-bis.",
   art9:RA_ANT_TESTI.art9+"\nSe la condizione dell'art. 1-bis non si avvera, il contratto si scioglie come previsto da quell'articolo: nota di credito per l'intera fattura e restituzione dell'intero anticipo ricevuto.",
   approvazione:RA_ANT_TESTI.approvazione.replace('le seguenti clausole: art. 6','le seguenti clausole: art. 1-bis (condizione sospensiva: effetti dalla data di efficacia, termine, scioglimento senza penali né risarcimenti, restituzione dell\'anticipo senza interessi); art. 6')
@@ -3898,7 +3898,9 @@ const RA_ANT_DATI={'codice eer':'eer','quantità':'quantita','mesi':'mesi','prez
   'anticipo':'anticipo','rata':'rata','esempio rata':'esempioRata','giorni pagamento':'giorniPagamento','giorno rendiconto':'giornoRendiconto','iban':'iban','esempio chiusura':'esempioChiusura',
   'comunicazione aua':'auaCom','oggetto modifica aua':'auaOgg','mesi condizione':'condMesi','termine condizione':'condTermine','giorni restituzione':'condGiorni'};
 const RA_ANT_DATI_ELENCO='[codice EER] [quantità] [mesi] [prezzo] [aliquota IVA] [imponibile] [IVA] [totale] [anticipo] [rata] [esempio rata] [giorni pagamento] [giorno rendiconto] [IBAN] [esempio chiusura]';
-const RA_ANT_DATI_ELENCO_COND=RA_ANT_DATI_ELENCO+' [comunicazione AUA] [oggetto modifica AUA] [mesi condizione] [termine condizione] [giorni restituzione]';
+const RA_ANT_DATI_ELENCO_COND=RA_ANT_DATI_ELENCO+' [mesi condizione] [termine condizione] [giorni restituzione]';
+/* I campi «estremi» e «oggetto» della comunicazione AUA servono solo se i testi del contratto li usano */
+function raCondUsaEstremi(t){return /\[(comunicazione aua|oggetto modifica aua)\]/i.test(Object.values(t||{}).join(' '));}
 const RA_ANT_KEYS=[...RA_ANT_COND_CAMPI,...RA_ANT_ALL_CAMPI].map(c=>c[0]);
 /* Testi di un contratto: quelli salvati nel contratto (solo i campi previsti) sopra i testi originali */
 function raAntTesti(x){const t={...(x&&x.condAUA?RA_ANT_COND_TESTI:RA_ANT_TESTI)};const s=(x&&x.testi)||{};RA_ANT_KEYS.forEach(k=>{if(typeof s[k]==='string')t[k]=s[k];});return t;}
@@ -4265,8 +4267,8 @@ function openContrattoRAAnt(id,opt){
       <div class="field"><label>Chiusura dopo mesi senza scarichi</label><input id="ran-inatt" type="number" value="${esc(x.mesiInattivita)}"></div>
 ${cond?`
       <div class="section-label">Condizione sospensiva — modifica dell'A.U.A. (art. 1-bis)</div>
-      <div class="field col2"><label>Comunicazione di modifica non sostanziale (estremi)</label><input id="ran-auacom" value="${esc(x.auaComunicazione||'')}" placeholder="Es. prot. n. … del … (presentata all'autorità competente)"></div>
-      <div class="field col2"><label>Oggetto della modifica</label><input id="ran-auaogg" value="${esc(x.auaOggetto||'')}" placeholder="Es. aumento dei quantitativi annui di recupero R10"></div>
+      ${raCondUsaEstremi(raAntTesti(x))?`<div class="field col2"><label>Comunicazione di modifica non sostanziale (estremi)</label><input id="ran-auacom" value="${esc(x.auaComunicazione||'')}" placeholder="Es. prot. n. … del … (presentata all'autorità competente)"></div>
+      <div class="field col2"><label>Oggetto della modifica</label><input id="ran-auaogg" value="${esc(x.auaOggetto||'')}" placeholder="Es. aumento dei quantitativi annui di recupero R10"></div>`:''}
       <div class="field"><label>Termine: mesi dalla firma</label><input id="ran-condmesi" type="number" value="${esc(x.condMesi||6)}"></div>
       <div class="field"><label>Restituzione anticipo entro giorni</label><input id="ran-condgg" type="number" value="${esc(x.condGiorni||30)}"></div>
       <div class="field col2"><span class="hint">Conferimenti, quantitativo e mesi senza scarichi partono dalla data della PEC con cui comunichi al cliente la modifica AUA: la registri dalla «Scheda» del contratto. Lì trovi anche la proroga del termine e lo scioglimento se la condizione non si avvera.</span></div>`:''}
@@ -4309,7 +4311,7 @@ ${cond?`
       codiceCer:v('ran-cer'),descrizioneCer:v('ran-cerdesc'),prezzoT,aliquotaIva:v('ran-iva')===''?22:num(v('ran-iva')),quantitaMax,anticipoTipo,anticipoValore,
       giorniPag:num(v('ran-gg'))||60,rendGiorno:num(v('ran-rendg'))||5,mesiInattivita:num(v('ran-inatt'))||12,
       note:v('ran-note'),allegati:raFiles.map(f=>({...f})),testi:raAntTestiRead('rant',campiT)};
-    if(cond)Object.assign(data,{condAUA:true,auaComunicazione:v('ran-auacom'),auaOggetto:v('ran-auaogg'),condMesi:num(v('ran-condmesi'))||6,condGiorni:num(v('ran-condgg'))||30});
+    if(cond)Object.assign(data,{condAUA:true,auaComunicazione:document.getElementById('ran-auacom')?v('ran-auacom'):(x.auaComunicazione||''),auaOggetto:document.getElementById('ran-auaogg')?v('ran-auaogg'):(x.auaOggetto||''),condMesi:num(v('ran-condmesi'))||6,condGiorni:num(v('ran-condgg'))||30});
     const nn=raNum(data);let seq=Math.max(0,...(x.omologhe||[]).map(o=>num(o.seq)));
     data.omologhe=omologhe.map(o=>{if(!o.seq){seq++;o.seq=seq;}o.numero=nn+'-'+String(o.seq).padStart(2,'0');return o;});
     // campi comuni, per elenco, ricerca e registro dei contratti R.A.
@@ -4480,8 +4482,8 @@ function raAntDatiMancanti(x){
   else [['indirizzo','indirizzo'],['pec','PEC'],['email','e-mail'],['telefono','telefono']].forEach(([k2,l])=>{if(!String(c[k2]||'').trim())m.push(l+' del cliente');});
   if(c&&!String(c.partitaIva||c.codiceFiscale||'').trim())m.push('P.IVA o codice fiscale del cliente');
   if(!String(a.iban||'').trim())m.push('IBAN di Cava (dati azienda)');
-  if(x.condAUA&&!String(x.auaComunicazione||'').trim())m.push('estremi della comunicazione di modifica AUA');
-  if(x.condAUA&&!String(x.auaOggetto||'').trim())m.push('oggetto della modifica AUA');
+  if(x.condAUA&&raCondUsaEstremi(raAntTesti(x))&&!String(x.auaComunicazione||'').trim())m.push('estremi della comunicazione di modifica AUA');
+  if(x.condAUA&&raCondUsaEstremi(raAntTesti(x))&&!String(x.auaOggetto||'').trim())m.push('oggetto della modifica AUA');
   return m;
 }
 /* Impaginazione a pagine A4 fisse: larghezza 680px = 180 mm; altezza utile ~1000px (stampa 271 mm, PDF 273 mm).

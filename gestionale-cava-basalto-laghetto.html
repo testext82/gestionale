@@ -826,7 +826,7 @@ function openDiagnostica(){
 /* ===================== DIAGNOSTICA (Impostazioni) =====================
    Registro degli eventi salvato su questo dispositivo (ultime 300 righe): avvio, errori, sincronizzazione,
    invio degli allegati. In Impostazioni: stato dell'app, controlli sui dati, test delle funzioni, copia del rapporto. */
-const APP_BUILD='26/11/2026 12:18';
+const APP_BUILD='26/11/2026 12:24';
 const DIAG_KEY='cbl_diag_log';
 let diagSyncUltimo='';let sbUltimoOk=0;
 function diagRighe(){try{return JSON.parse(localStorage.getItem(DIAG_KEY)||'[]');}catch(e){return [];}}
@@ -3603,7 +3603,7 @@ const RA_DEF={
   titolo:`CONTRATTO PER IL CONFERIMENTO DI TERRE E ROCCE DA SCAVO`,
   sottotitolo:`EER 17.05.04 — diverse da quelle di cui alla voce 17.05.03 — D.M. 5/2/1998 e s.m.i., punto 7.31 bis`,
   oggetto:`Contratto per il conferimento di terre e rocce da scavo, EER 17.05.04 diverse da quelle di cui alla voce 17.05.03, di cui al punto 7.31 bis del D.M. 5/2/1998 e s.m.i., provenienti dal Vs. cantiere sito in:`,
-  datiR10:`Via Casilina Km 22,500, Monte Compatri cap 00077, Società Cava Basalto Laghetto S.r.l., Codice Fiscale 08188290582 e Partita IVA 01983311000, nostra comunicazione inizio attività prot. Provincia di Roma n° 63619 del 19/04/2010 – A.U.A. (Autorizzazione Unica Ambientale) R.U. 746 del 28/02/2018.`,
+  datiR10:`Via Casilina Km 22,500, Monte Compatri cap 00077, Società Cava Basalto Laghetto S.r.l., Codice Fiscale 08188290582 e Partita IVA 01983311000, nostra comunicazione inizio attività prot. Provincia di Roma n° 63619 del 19/04/2010 – A.U.A. (Autorizzazione Unica Ambientale) R.U. 746 del 28/02/2018[modifica AUA].`,
   codiceCer:`17 05 04`,
   descrizioneCer:`Terre e rocce da scavo diverse da quelle di cui alla voce 17 05 03`,
   modalitaConferimento:`Terre e rocce da scavo per il recupero ambientale R10`,
@@ -3624,7 +3624,7 @@ Per ogni controversia e pretesa derivante dall'interpretazione ed attuazione del
   notaIva:`(IVA 22% inclusa)`,
   piePagina:`Cava Basalto Laghetto S.r.l. — Costruzioni edili e pavimentazioni stradali e recupero ambientale`
 };
-function raNuovo(){const n=nextNumber('contrattoRA');return {id:uid(),data:today(),numero:n.numero,anno:n.anno,pagine:'',umPrezzo:'Metri cubi',umQuantita:'Metri cubi',...RA_DEF,...raModelloTesti('stdBianco')};}
+function raNuovo(){const n=nextNumber('contrattoRA');return {id:uid(),data:today(),numero:n.numero,anno:n.anno,pagine:'',umPrezzo:'Metri cubi',umQuantita:'Metri cubi',...RA_DEF,...raModelloTesti('stdBianco'),auaMod:raModAuaDefault()};}
 function raNum(x){return x.anno?`${x.numero}/${x.anno}`:String(x.numero||'');}
 function renderContrattiRA(c){
   if(raVista==='documenti'){renderRADocumenti(c);return;}
@@ -3775,7 +3775,7 @@ const RA_ANT_TESTI={
   titolo:'CONTRATTO CON ANTICIPO PER IL CONFERIMENTO DI TERRE E ROCCE DA SCAVO',
   sottotitolo:'EER [codice EER] — diverse da quelle di cui alla voce 17.05.03 — D.M. 5/2/1998 e s.m.i., punto 7.31 bis — Recupero ambientale R10',
   parti:'Di seguito «il Gestore» e «il Conferitore», insieme «le Parti».',
-  premesse:`Il Gestore esercita l'attività di recupero ambientale R10 nel sito di Via Casilina Km 22,500, Monte Compatri (RM): comunicazione di inizio attività prot. Provincia di Roma n° 63619 del 19/04/2010; A.U.A. (Autorizzazione Unica Ambientale) R.U. 746 del 28/02/2018.
+  premesse:`Il Gestore esercita l'attività di recupero ambientale R10 nel sito di Via Casilina Km 22,500, Monte Compatri (RM): comunicazione di inizio attività prot. Provincia di Roma n° 63619 del 19/04/2010; A.U.A. (Autorizzazione Unica Ambientale) R.U. 746 del 28/02/2018[modifica AUA].
 Il Conferitore esegue lavori in più cantieri e intende conferire al Gestore le terre e rocce da scavo prodotte, classificate EER [codice EER], senza individuare oggi uno specifico cantiere.
 Le Parti stipulano quindi un contratto con anticipo, in forma di contratto aperto. Il contratto fissa prezzo e quantitativo massimo, senza termine di durata, salvo la chiusura dopo [mesi] mesi senza scarichi. Il corrispettivo è fatturato per intero alla firma; si paga con un anticipo e con rate mensili sulle quantità effettivamente conferite.
 Ogni cantiere si aggiunge con la scheda di omologa dell'Allegato A, con i documenti richiesti dagli artt. 8 e 9 del D.M. 5/2/1998.
@@ -3828,7 +3828,7 @@ In caso di risoluzione restano dovute le rate dei conferimenti già eseguiti. La
    nota di credito totale e restituzione dell'anticipo entro 30 giorni, senza interessi. */
 const RA_ANT_COND_TESTI={...RA_ANT_TESTI,
   titolo:'CONTRATTO CON ANTICIPO PER IL CONFERIMENTO DI TERRE E ROCCE DA SCAVO SOTTOPOSTO A CONDIZIONE SOSPENSIVA',
-  premesse:`Il Gestore esercita l'attività di recupero ambientale R10 nel sito di Via Casilina Km 22,500, Monte Compatri (RM): comunicazione di inizio attività prot. Provincia di Roma n° 63619 del 19/04/2010; A.U.A. (Autorizzazione Unica Ambientale) R.U. 746 del 28/02/2018.
+  premesse:`Il Gestore esercita l'attività di recupero ambientale R10 nel sito di Via Casilina Km 22,500, Monte Compatri (RM): comunicazione di inizio attività prot. Provincia di Roma n° 63619 del 19/04/2010; A.U.A. (Autorizzazione Unica Ambientale) R.U. 746 del 28/02/2018[modifica AUA].
 Il Gestore ha presentato all'autorità competente la comunicazione di modifica non sostanziale dell'A.U.A. I conferimenti previsti da questo contratto presuppongono l'efficacia di tale modifica.
 Il Conferitore esegue lavori in più cantieri e intende conferire al Gestore le terre e rocce da scavo prodotte, classificate EER [codice EER], senza individuare oggi uno specifico cantiere.
 Le Parti stipulano quindi un contratto con anticipo, in forma di contratto aperto, sottoposto alla condizione sospensiva dell'art. 1-bis. Il contratto fissa prezzo e quantitativo massimo, senza termine di durata, salvo la chiusura dopo [mesi] mesi senza scarichi. Il corrispettivo è fatturato per intero alla firma; si paga con un anticipo e con rate mensili sulle quantità effettivamente conferite.
@@ -3895,9 +3895,9 @@ const RA_ANT_ART=[
   {tit:'Art. 14 — Foro competente',k:'art14'}];
 /* Dati automatici: [parola] → chiave dei valori */
 const RA_ANT_DATI={'codice eer':'eer','quantità':'quantita','mesi':'mesi','prezzo':'prezzo','aliquota iva':'aliquota','imponibile':'imponibile','iva':'iva','totale':'totale',
-  'anticipo':'anticipo','rata':'rata','esempio rata':'esempioRata','giorni pagamento':'giorniPagamento','giorno rendiconto':'giornoRendiconto','iban':'iban','esempio chiusura':'esempioChiusura',
+  'anticipo':'anticipo','rata':'rata','esempio rata':'esempioRata','giorni pagamento':'giorniPagamento','giorno rendiconto':'giornoRendiconto','iban':'iban','esempio chiusura':'esempioChiusura','modifica aua':'auaMod',
   'comunicazione aua':'auaCom','oggetto modifica aua':'auaOgg','mesi condizione':'condMesi','termine condizione':'condTermine','giorni restituzione':'condGiorni'};
-const RA_ANT_DATI_ELENCO='[codice EER] [quantità] [mesi] [prezzo] [aliquota IVA] [imponibile] [IVA] [totale] [anticipo] [rata] [esempio rata] [giorni pagamento] [giorno rendiconto] [IBAN] [esempio chiusura]';
+const RA_ANT_DATI_ELENCO='[modifica AUA] [codice EER] [quantità] [mesi] [prezzo] [aliquota IVA] [imponibile] [IVA] [totale] [anticipo] [rata] [esempio rata] [giorni pagamento] [giorno rendiconto] [IBAN] [esempio chiusura]';
 const RA_ANT_DATI_ELENCO_COND=RA_ANT_DATI_ELENCO+' [mesi condizione] [termine condizione] [giorni restituzione]';
 /* I campi «estremi» e «oggetto» della comunicazione AUA servono solo se i testi del contratto li usano */
 function raCondUsaEstremi(t){return /\[(comunicazione aua|oggetto modifica aua)\]/i.test(Object.values(t||{}).join(' '));}
@@ -3956,6 +3956,9 @@ const RA_MESI=['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio',
 const raR3=v=>Math.round(num(v)*1000)/1000;
 function raIsAnt(x){return !!x&&x.tipo==='anticipo';}
 /* ---- Contratto con anticipo in attesa AUA: stato, efficacia, proroga, scioglimento ---- */
+/* Riferimenti della modifica non sostanziale dell'AUA (premessa 1): salvati nel contratto; vuoti = non si stampa nulla */
+function raModAuaTxt(v){v=String(v||'').trim();return v?', aggiornata per modifica non sostanziale con '+esc(v):'';}
+function raModAuaDefault(){return String((S.azienda||{}).auaModifica||'').trim();}
 function raIsCond(x){return raIsAnt(x)&&!!x.condAUA;}
 function raCondEfficacia(x){return (x&&x.efficacia&&x.efficacia.data)||'';}
 function raCondTermineBase(x){return raAddMonthsIso(x.data||today(),num(x.condMesi)||6);}
@@ -4160,7 +4163,7 @@ function raAntChiusuraCalc(x,st){
   const rest=k.Q>0?round2(k.ant*tNon/k.Q):0;
   return {tNon,ncImp,ncIva,nc,rest};
 }
-function raAntNuovo(cond){const n=nextNumber('contrattoRA');return {id:uid(),...RA_ANT_DEF,data:today(),numero:n.numero,anno:n.anno,pagine:'',omologhe:[],allegati:[],testi:raAntTestiModello(cond),...(cond?{condAUA:true,condMesi:6,condGiorni:30}:{})};}
+function raAntNuovo(cond){const n=nextNumber('contrattoRA');return {id:uid(),...RA_ANT_DEF,data:today(),numero:n.numero,anno:n.anno,pagine:'',omologhe:[],allegati:[],auaMod:raModAuaDefault(),testi:raAntTestiModello(cond),...(cond?{condAUA:true,condMesi:6,condGiorni:30}:{})};}
 
 /* ---- Editor ---- */
 function raSceltaTipo(){
@@ -4242,6 +4245,9 @@ function openContrattoRAAnt(id,opt){
       <div class="field"><label>Anno</label><input id="ran-anno" type="number" value="${esc(x.anno||new Date().getFullYear())}"></div>
       <div class="field"><label>Pagine n°</label><input id="ran-pagine" value="${esc(x.pagine||'')}" placeholder="automatico"></div>
 
+      <div class="field col2"><label>Modifica non sostanziale dell'AUA — riferimenti (premessa 1)</label><input id="ran-auamod" value="${esc(x.auaMod||'')}" placeholder="Es. determinazione n. … del … della Città metropolitana di Roma Capitale">
+        <span class="hint">Si stampa dopo l'A.U.A. nella premessa 1 («…, aggiornata per modifica non sostanziale con …»). Vuoto = non si stampa nulla. Per i nuovi contratti si compila da solo dai Dati azienda (Impostazioni).</span></div>
+
       <div class="section-label">Cliente (conferitore)</div>
       <div class="field col2"><label>Cliente <span class="req">*</span></label><div class="with-add"><select id="ran-cliente" data-ent="clienti">${cliOpts}</select>${qaBtn("quickAddInto('clienti','ran-cliente')")}</div>
         <span class="hint">L'anagrafica completa (sede, C.F., P.IVA, codice univoco, PEC, e-mail, telefono) viene presa dall'anagrafica clienti al momento della stampa.</span></div>
@@ -4309,7 +4315,7 @@ ${cond?`
       data:v('ran-data')||today(),numero:num(v('ran-numero'))||v('ran-numero'),anno:parseInt(v('ran-anno'))||yearOf(v('ran-data')),pagine:v('ran-pagine'),
       clienteId,ditta:cli.ragioneSociale||'',firmaCava:v('ran-firmacava'),firmaCliente:v('ran-firmacli'),
       codiceCer:v('ran-cer'),descrizioneCer:v('ran-cerdesc'),prezzoT,aliquotaIva:v('ran-iva')===''?22:num(v('ran-iva')),quantitaMax,anticipoTipo,anticipoValore,
-      giorniPag:num(v('ran-gg'))||60,rendGiorno:num(v('ran-rendg'))||5,mesiInattivita:num(v('ran-inatt'))||12,
+      auaMod:v('ran-auamod'),giorniPag:num(v('ran-gg'))||60,rendGiorno:num(v('ran-rendg'))||5,mesiInattivita:num(v('ran-inatt'))||12,
       note:v('ran-note'),allegati:raFiles.map(f=>({...f})),testi:raAntTestiRead('rant',campiT)};
     if(cond)Object.assign(data,{condAUA:true,auaComunicazione:document.getElementById('ran-auacom')?v('ran-auacom'):(x.auaComunicazione||''),auaOggetto:document.getElementById('ran-auaogg')?v('ran-auaogg'):(x.auaOggetto||''),condMesi:num(v('ran-condmesi'))||6,condGiorni:num(v('ran-condgg'))||30});
     const nn=raNum(data);let seq=Math.max(0,...(x.omologhe||[]).map(o=>num(o.seq)));
@@ -4562,7 +4568,7 @@ function raAntDocHtml(x,opt){
     esempioChiusura:blank?'':`Esempio: con chiusura a ${qty(tChiusa)} t, nota di credito di € ${eur(es.nc)} e restituzione di € ${eur(es.rest)}.`,
     auaCom:(!blank&&String(x.auaComunicazione||'').trim())?e(x.auaComunicazione):'<span class="ra-fill" style="min-width:200px"></span>',
     auaOgg:(!blank&&String(x.auaOggetto||'').trim())?e(x.auaOggetto):'<span class="ra-fill" style="min-width:200px"></span>',
-    condMesi:F(num(x.condMesi)||6,24),condGiorni:F(num(x.condGiorni)||30,24),
+    condMesi:F(num(x.condMesi)||6,24),condGiorni:F(num(x.condGiorni)||30,24),auaMod:raModAuaTxt(blank?raModAuaDefault():x.auaMod),
     condTermine:(!blank&&x.data)?dmy(raAddMonthsIso(x.data,num(x.condMesi)||6)):'<span class="ra-fill" style="min-width:90px"></span>'};
   const blocchi={
     tabellaRifiuto:`<table class="ra-tab"><thead><tr><th style="width:110px">Codice E.E.R.</th><th>Definizione dei materiali</th><th>Operazione</th></tr></thead>
@@ -4621,7 +4627,7 @@ function printContrattoRAAntBianco(){
     email:{to:'',subject:'Contratto con anticipo per il conferimento di terre e rocce da scavo',body:''}},raAntDocHtml({...RA_ANT_DEF,omologhe:[]},{blank:true,testi:raAntTestiModello()}),'');
 }
 /* Contratto standard in bianco: testi standard, campi del cliente, prezzi e quantità vuoti */
-function printContrattoRAStdBianco(){printContrattoRA('',{...raModelloTesti('stdBianco'),umPrezzo:'',umQuantita:'Quantità',prezzi:[],quantita:'',pagamento:''});}
+function printContrattoRAStdBianco(){printContrattoRA('',{...raModelloTesti('stdBianco'),auaMod:raModAuaDefault(),umPrezzo:'',umQuantita:'Quantità',prezzi:[],quantita:'',pagamento:''});}
 /* Allegato A in bianco: una scheda di omologa da compilare */
 function printAllegatoABianco(){
   const m=raModelloTesti('allegatoA');
@@ -5009,7 +5015,10 @@ function openContrattoRAStd(id){
       <div class="field col2"><label>Titolo</label><input id="ra-titolo" value="${esc(x.titolo||'')}"></div>
       <div class="field col2"><label>Sottotitolo</label><input id="ra-sottotitolo" value="${esc(x.sottotitolo||'')}"></div>
       <div class="field col2"><label>Oggetto</label><textarea id="ra-oggetto" rows="3">${esc(x.oggetto||'')}</textarea></div>
-      <div class="field col2"><label>Dati recupero ambientale R10</label><textarea id="ra-r10" rows="3">${esc(x.datiR10||'')}</textarea></div>
+      <div class="field col2"><label>Dati recupero ambientale R10</label><textarea id="ra-r10" rows="3">${esc(x.datiR10||'')}</textarea>
+        <span class="hint">«[modifica AUA]» è il posto dei riferimenti della modifica non sostanziale: si compila dal campo qui sotto.</span></div>
+      <div class="field col2"><label>Modifica non sostanziale dell'AUA — riferimenti</label><input id="ra-auamod" value="${esc(x.auaMod||'')}" placeholder="Es. determinazione n. … del … della Città metropolitana di Roma Capitale">
+        <span class="hint">Vuoto = non si stampa nulla. Per i nuovi contratti si compila da solo dai Dati azienda (Impostazioni).</span></div>
       <div class="field col2"><label>Modalità per il conferimento del rifiuto</label><textarea id="ra-modal" rows="2">${esc(x.modalitaConferimento||'')}</textarea></div>
       <div class="field col2"><label>Condizioni punti 1-5 (una per riga)</label><textarea id="ra-cond1" rows="8">${esc(x.condizioni1||'')}</textarea>
         <span class="hint">L'elenco dei documenti si stampa sotto il punto che finisce con i due punti «:».</span></div>
@@ -5042,7 +5051,7 @@ function openContrattoRAStd(id){
       codiceCer:v('ra-cer'),descrizioneCer:v('ra-cerdesc'),
       prezzo:(prezzi[0]&&prezzi[0].prezzo!=null)?prezzi[0].prezzo:'',notaIva:v('ra-iva'),
       quantita:v('ra-qta')===''?'':num(v('ra-qta')),pagamento:v('ra-pag'),
-      titolo:v('ra-titolo'),sottotitolo:v('ra-sottotitolo'),oggetto:v('ra-oggetto'),datiR10:v('ra-r10'),
+      titolo:v('ra-titolo'),sottotitolo:v('ra-sottotitolo'),oggetto:v('ra-oggetto'),datiR10:v('ra-r10'),auaMod:v('ra-auamod'),
       modalitaConferimento:v('ra-modal'),condizioni1:v('ra-cond1'),documenti:v('ra-docs'),ubicazione:v('ra-ubic'),garanzia:v('ra-gar'),
       pagamentoLegale:v('ra-paglegale'),condizioni2:v('ra-cond2'),art1341:v('ra-1341'),piePagina:v('ra-pie'),
       allegati:raFiles.map(f=>({...f}))};
@@ -5121,7 +5130,7 @@ function printContrattoRA(id,recBianco){
     <div class="ra-row" style="margin:8px 0">Produttore ${raLinea(x.produttore,260)} &nbsp; Analisi: Rapporto di Prova N° ${raLinea(x.rapportoProva,120)} del ${raLinea(x.dataRapporto?dmy(x.dataRapporto):'',100)}</div>
     <p class="ra-p"><b>Oggetto:</b> ${esc(x.oggetto)} ${raLinea(x.cantiere,240)}.</p>
     <div class="ra-h2">DATI RECUPERO AMBIENTALE R10</div>
-    <p class="ra-p">${esc(x.datiR10)}</p>
+    <p class="ra-p">${esc(x.datiR10).replace(/\[modifica AUA\]/gi,raModAuaTxt(x.auaMod))}</p>
     <div class="ra-h2">RIFIUTI CONFERIBILI PER IL RECUPERO AMBIENTALE R10</div>
     <table class="ra-tab"><thead><tr><th style="width:130px">Codice E.E.R.</th><th>Definizione dei materiali</th></tr></thead>
       <tbody><tr><td>${esc(x.codiceCer)}</td><td>${esc(x.descrizioneCer)}</td></tr></tbody></table>
@@ -7922,7 +7931,7 @@ function pdfContrattoRA(x){
   pdfPara(pdf,fl,`Produttore: ${x.produttore||''}     Analisi: Rapporto di Prova N° ${x.rapportoProva||''} del ${x.dataRapporto?dmy(x.dataRapporto):''}`,{size:8.8});
   fl.gap(2);
   pdfPara(pdf,fl,`Oggetto: ${x.oggetto} ${x.cantiere||''}`,{size:9});
-  pdfH2(pdf,fl,'Dati recupero ambientale R10');pdfPara(pdf,fl,x.datiR10,{size:9});
+  pdfH2(pdf,fl,'Dati recupero ambientale R10');pdfPara(pdf,fl,String(x.datiR10||'').replace(/\[modifica AUA\]/gi,String(x.auaMod||'').trim()?', aggiornata per modifica non sostanziale con '+String(x.auaMod).trim():''),{size:9});
   pdfH2(pdf,fl,'Rifiuti conferibili per il recupero ambientale R10');
   fl.ensure(16);fl.y=pdfTable(pdf,PDFM,fl.y,[{title:'Codice E.E.R.',w:34},{title:'Definizione dei materiali',w:PDFRight-PDFM-34}],[[x.codiceCer,x.descrizioneCer]])+2;
   pdfH2(pdf,fl,`Modalità per il conferimento del rifiuto (EER ${x.codiceCer||''})`);
@@ -8361,6 +8370,7 @@ function renderImpostazioni(c){
           ${F('banca','Banca',true)}
           ${F('iban','IBAN',true)}
           ${F('altro','Altri riferimenti (Trib./CCIAA/Cap.Soc.)',true)}
+          ${F('auaModifica','Modifica non sostanziale AUA — riferimenti della determina (va nei nuovi contratti R.A.)',true)}
         </div>
         <div style="margin-top:16px"><button class="btn primary" onclick="saveAzienda()">Salva dati azienda</button></div>
       </div>

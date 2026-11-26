@@ -826,7 +826,7 @@ function openDiagnostica(){
 /* ===================== DIAGNOSTICA (Impostazioni) =====================
    Registro degli eventi salvato su questo dispositivo (ultime 300 righe): avvio, errori, sincronizzazione,
    invio degli allegati. In Impostazioni: stato dell'app, controlli sui dati, test delle funzioni, copia del rapporto. */
-const APP_BUILD='26/11/2026 14:54';
+const APP_BUILD='26/11/2026 15:09';
 const DIAG_KEY='cbl_diag_log';
 let diagSyncUltimo='';let sbUltimoOk=0;
 function diagRighe(){try{return JSON.parse(localStorage.getItem(DIAG_KEY)||'[]');}catch(e){return [];}}
@@ -1798,11 +1798,32 @@ function renderEntity(entity,c){
           <tbody>${bodyHtml}</tbody></table>`}
     </div>`;
 }
+/* Ordinamento dei contratti (menu a tendina); i valori mancanti vanno sempre in fondo. La scelta resta su questo dispositivo. */
+const CONTR_ORD=[['numero-desc','Numero (più recenti prima)'],['numero-asc','Numero (più vecchi prima)'],
+  ['dataContratto-desc','Data contratto (più recente)'],['dataContratto-asc','Data contratto (più vecchia)'],
+  ['dataRegistrazione-desc','Data registrazione (più recente)'],['dataRegistrazione-asc','Data registrazione (più vecchia)'],
+  ['importo-desc','Importo / canone (più alto)'],['importo-asc','Importo / canone (più basso)'],
+  ['dataFine-asc','Scadenza validità (più vicina)'],['dataInizio-desc','Inizio validità (più recente)'],
+  ['cliente-asc','Cliente (A → Z)'],['tipo-asc','Tipo di contratto (A → Z)'],['recenti','Ultimo inserimento']];
+let contrattiOrdina=(()=>{try{const v=localStorage.getItem('cbl_contratti_ordina');return CONTR_ORD.some(o=>o[0]===v)?v:'numero-desc';}catch(e){return 'numero-desc';}})();
+function contrattiSetOrdina(v){contrattiOrdina=v;try{localStorage.setItem('cbl_contratti_ordina',v);}catch(e){}render();}
+function contrattiSortFn(mode){
+  const numAsc=(a,b)=>((num(a.anno)||0)-(num(b.anno)||0))||((num(a.numero)||0)-(num(b.numero)||0));
+  if(mode==='recenti')return (a,b)=>(b._seq||0)-(a._seq||0)||-numAsc(a,b);
+  const [campo,dir]=String(mode||'numero-desc').split('-'),sg=dir==='asc'?1:-1;
+  if(campo==='numero')return (a,b)=>{const ea=!num(a.numero),eb=!num(b.numero);if(ea!==eb)return ea?1:-1;return sg*numAsc(a,b);}; // senza numero in fondo
+  const val={dataContratto:x=>x.dataContratto||'',dataRegistrazione:x=>x.dataRegistrazione||'',dataFine:x=>x.dataFine||'',dataInizio:x=>x.dataInizio||'',
+    importo:x=>(x.prezzo===''||x.prezzo==null)?null:num(x.prezzo),cliente:x=>clienteName(x.clienteId)||'',tipo:x=>contrattoTipoNome(x)||''}[campo]||(x=>'');
+  return (a,b)=>{const va=val(a),vb=val(b),ea=va===''||va==null,eb=vb===''||vb==null;
+    if(ea&&eb)return -numAsc(a,b);if(ea)return 1;if(eb)return -1;
+    const d=typeof va==='number'?va-vb:collator.compare(String(va),String(vb));
+    return (d*sg)||-numAsc(a,b);};
+}
 function renderContrattiList(cfg,c){
   let rows=cfg.list().filter(x=>!contrattoIsR10(x)); // i recupero ambientale (R10) sono gestiti in "Editing contratti R.A."
   const term=(searchTerm.contratti||'').toLowerCase().trim();
   if(term) rows=rows.filter(x=>cfg.search(x).toLowerCase().includes(term));
-  const numCmp=(a,b)=>(b.anno-a.anno)||(b.numero-a.numero); // numerico, più recente in alto
+  const numCmp=contrattiSortFn(contrattiOrdina);
   const nCols=cfg.columns.length+1;
   let bodyHtml;
   if(contrattiRaggruppa){
@@ -1820,6 +1841,7 @@ function renderContrattiList(cfg,c){
   c.innerHTML=`
     <div class="toolbar">
       <div class="search">${svg(IC.search)}<input placeholder="Cerca per numero, cliente, oggetto…" value="${esc(searchTerm.contratti||'')}" data-sf="contratti" oninput="searchTerm.contratti=this.value;render()"></div>
+      <select onchange="contrattiSetOrdina(this.value)" title="Ordina i contratti">${CONTR_ORD.map(([v,l])=>`<option value="${v}" ${contrattiOrdina===v?'selected':''}>Ordina per: ${l}</option>`).join('')}</select>
       <button class="btn ${contrattiRaggruppa?'primary':''}" onclick="contrattiRaggruppa=!contrattiRaggruppa;render()">${svg(IC.user)} ${contrattiRaggruppa?'Raggruppati per cliente':'Raggruppa per cliente'}</button>
     </div>
     <div class="card">

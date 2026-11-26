@@ -826,7 +826,7 @@ function openDiagnostica(){
 /* ===================== DIAGNOSTICA (Impostazioni) =====================
    Registro degli eventi salvato su questo dispositivo (ultime 300 righe): avvio, errori, sincronizzazione,
    invio degli allegati. In Impostazioni: stato dell'app, controlli sui dati, test delle funzioni, copia del rapporto. */
-const APP_BUILD='26/11/2026 11:52';
+const APP_BUILD='26/11/2026 12:01';
 const DIAG_KEY='cbl_diag_log';
 let diagSyncUltimo='';let sbUltimoOk=0;
 function diagRighe(){try{return JSON.parse(localStorage.getItem(DIAG_KEY)||'[]');}catch(e){return [];}}
@@ -3835,10 +3835,10 @@ Le Parti stipulano quindi un contratto con anticipo, in forma di contratto apert
 Ogni cantiere si aggiunge con la scheda di omologa dell'Allegato A, con i documenti richiesti dagli artt. 8 e 9 del D.M. 5/2/1998.
 Le premesse e l'Allegato A (scheda di omologa del cantiere) fanno parte integrante del contratto.`,
   art1bis:`Gli effetti del contratto sono sospesi finché il Gestore non può eseguire la modifica non sostanziale dell'A.U.A. indicata nelle premesse (condizione sospensiva, art. 1353 c.c.). La condizione si avvera quando l'autorità competente ha adottato la determinazione di aggiornamento dell'A.U.A. e il Gestore ha prestato le garanzie finanziarie eventualmente richieste (fideiussione).
-Il Gestore comunica al Conferitore via PEC l'avveramento della condizione e gli trasmette la determinazione di aggiornamento dell'A.U.A. La data di questa PEC è la data di efficacia del contratto: da essa decorrono i conferimenti, il quantitativo massimo, il termine dell'art. 3 e tutte le obbligazioni legate ai conferimenti. Fino a quella data il Gestore non accetta carichi in esecuzione del contratto.
+Quando dispone sia della determinazione sia delle garanzie finanziarie, il Gestore lo comunica al Conferitore via PEC e gli trasmette la determinazione di aggiornamento dell'A.U.A. La data di questa PEC è la data di efficacia del contratto: da essa decorrono i conferimenti, il quantitativo massimo, il termine dell'art. 3 e tutte le obbligazioni legate ai conferimenti. Fino a quella data il Gestore non accetta carichi in esecuzione del contratto.
 Sono efficaci dalla firma: il prezzo, che resta fisso; la fattura e l'anticipo (artt. 8.1 e 8.2); questo articolo.
-La condizione deve avverarsi entro [mesi condizione] mesi dalla firma, cioè entro il [termine condizione]. Le Parti possono prorogare il termine con accordo scritto firmato prima della scadenza. Il Gestore segue con diligenza la procedura e la costituzione delle garanzie finanziarie e informa il Conferitore delle richieste dell'autorità e dei tempi previsti.
-Se la condizione non si avvera entro il termine, o se prima del termine l'autorità nega la modifica, il contratto si scioglie e non produce effetti, senza penali né risarcimenti a carico delle Parti. Entro [giorni restituzione] giorni dalla scadenza del termine, o dalla comunicazione del diniego, il Gestore restituisce l'anticipo ricevuto, senza interessi, ed emette nota di credito per l'intera fattura (art. 26, comma 2, D.P.R. 633/1972).`,
+La condizione deve avverarsi entro [mesi condizione] mesi dalla firma, cioè entro il [termine condizione]. Le Parti possono prorogare il termine, anche più volte, con accordo scritto. Il Gestore segue con diligenza la procedura e la costituzione delle garanzie finanziarie e informa il Conferitore delle richieste dell'autorità e dei tempi previsti.
+Se la condizione non si avvera entro il termine, eventualmente prorogato, o se prima del termine l'autorità nega la modifica, il contratto si scioglie e non produce effetti, senza penali né risarcimenti a carico delle Parti. Entro [giorni restituzione] giorni dalla scadenza del termine, o dalla comunicazione del diniego, il Gestore restituisce l'anticipo ricevuto, senza interessi, ed emette nota di credito per l'intera fattura (art. 26, comma 2, D.P.R. 633/1972).`,
   art2:RA_ANT_TESTI.art2.replace('per tutti i cantieri insieme.','per tutti i cantieri insieme, a partire dalla data di efficacia (art. 1-bis).'),
   art3:`Il contratto non ha un termine di durata: dalla data di efficacia (art. 1-bis) resta in vigore fino al conferimento del quantitativo massimo.
 Il contratto si chiude comunque se per [mesi] mesi consecutivi non ci sono conferimenti. I mesi si contano dall'ultimo scarico o, se non c'è stato alcuno scarico, dalla data di efficacia.
@@ -3975,7 +3975,7 @@ function raCondBlocco(x){
   if(!raIsCond(x)||x.stato==='chiuso')return '';
   const eff=raCondEfficacia(x),term=raCondTermine(x),btn=(lab,fn,cls)=>`<button type="button" class="btn sm ${cls||''}" onclick="${fn}">${lab}</button>`;
   if(eff){const e=x.efficacia||{};
-    return `<div class="note">${svg(IC.shield)}<div><b>Contratto efficace dal ${dmy(eff)}</b> — ${e.modo==='silenzio'?'modifica AUA efficace per decorso dei 60 giorni':'determinazione di aggiornamento dell\'AUA'}${e.rif?': '+esc(e.rif):''}${e.fideiussione?' · fideiussione: '+esc(e.fideiussione):''}. Da questa data contano conferimenti, quantitativo e mesi senza scarichi.
+    return `<div class="note">${svg(IC.shield)}<div><b>Contratto efficace dal ${dmy(eff)}</b> — ${e.modo==='silenzio'?'modifica AUA efficace per decorso dei 60 giorni':'determinazione di aggiornamento dell\'AUA'}${e.rif?': '+esc(e.rif):''}${e.garanzie||e.fideiussione?' · garanzie finanziarie prestate':''}. Da questa data contano conferimenti, quantitativo e mesi senza scarichi.
       <button class="linklike" onclick="raAntCondAnnullaEfficacia('${x.id}')">annulla</button></div></div>`;}
   const g=raGiorni(today(),term),pr=x.condProroga;
   return `<div class="note" style="${g<0?'border-color:var(--danger)':''}">${svg(IC.shield)}<div style="flex:1"><b>In attesa della modifica non sostanziale dell'AUA</b>${x.auaComunicazione?' ('+esc(x.auaComunicazione)+')':''}.
@@ -3995,16 +3995,18 @@ function raAntCondEfficaciaDialog(id){
       <div class="field"><label>Data della PEC al cliente</label><input id="rce-data" type="date" value="${today()}"></div>
       <div class="field"></div>
       <div class="field col2"><label>Determinazione di aggiornamento dell'AUA</label><input id="rce-rif" placeholder="Es. determinazione n. … del …"></div>
-      <div class="field col2"><label>Garanzia finanziaria (fideiussione)</label><input id="rce-fid" placeholder="Es. polizza n. … di … del … (se richiesta)"></div>
+      <div class="field col2"><label><input type="checkbox" id="rce-gar"> Ho anche le garanzie finanziarie richieste (fideiussione)</label>
+        <span class="hint">I dati della polizza non vengono registrati né scritti nella comunicazione al cliente.</span></div>
       <div class="field col2"><label><input type="checkbox" id="rce-mail" checked> Prepara l'email al cliente</label>
         <span class="hint">Si apre il programma di posta con il testo già scritto: allega la documentazione e invia dalla PEC.</span></div>
     </div>`;
   openModal('Comunicazione della modifica AUA · contratto '+raNum(x),body,()=>{
-    const data=document.getElementById('rce-data').value||today(),modo='aggiornamento',rif=document.getElementById('rce-rif').value.trim(),fid=document.getElementById('rce-fid').value.trim();
+    const data=document.getElementById('rce-data').value||today(),modo='aggiornamento',rif=document.getElementById('rce-rif').value.trim(),gar=document.getElementById('rce-gar').checked;
     if(!rif){toast('Inserisci gli estremi della determinazione di aggiornamento dell\'AUA');return false;}
+    if(!gar){toast('La comunicazione si invia quando ci sono sia la determina sia le garanzie finanziarie');return false;}
     if(data<(x.data||'')){toast('La data è precedente alla firma del contratto');return false;}
     if(data>term){toast(`La data è successiva al termine della condizione (${dmy(term)}): registra prima la proroga firmata`);return false;}
-    x.efficacia={data,modo,rif,fideiussione:fid,registrata:today()};
+    x.efficacia={data,modo,rif,garanzie:true,registrata:today()};
     logAction('Contratto R.A. '+raNum(x)+' efficace',`dal ${dmy(data)} · modifica AUA${rif?' '+rif:''}`);
     persist();render();toast('Contratto efficace dal '+dmy(data)+': da ora si possono registrare i formulari');
     if(document.getElementById('rce-mail').checked)setTimeout(()=>raAntCondEmail(x.id),300);
@@ -4014,7 +4016,7 @@ function raAntCondEfficaciaDialog(id){
 function raAntCondEmail(id){
   const x=S.contrattiRA.find(s=>s.id===id);if(!x)return;const c=clienteById(x.clienteId)||{},e=x.efficacia||{},nn=raNum(x);
   const sogg=`Contratto con anticipo n. ${nn} — avveramento della condizione (modifica non sostanziale A.U.A.)`;
-  const corpo=`Spett.le ${c.ragioneSociale||x.ditta||''},\n\ncon riferimento al contratto con anticipo n. ${nn} del ${dmy(x.data)}, vi comunichiamo che l'autorità competente ha adottato la determinazione di aggiornamento dell'Autorizzazione Unica Ambientale${e.rif?' ('+e.rif+')':''} relativa alla modifica non sostanziale${x.auaComunicazione?' comunicata con '+x.auaComunicazione:''}${e.fideiussione?', e che sono state prestate le garanzie finanziarie richieste':''}.\n\nAi sensi dell'art. 1-bis del contratto, dalla data di questa comunicazione il contratto è efficace: potete iniziare i conferimenti, previo invio della scheda di omologa del cantiere (Allegato A) con i documenti dell'art. 4.\n\nIn allegato la determinazione di aggiornamento dell'A.U.A.\n\nCordiali saluti\nCava Basalto Laghetto S.r.l.`;
+  const corpo=`Spett.le ${c.ragioneSociale||x.ditta||''},\n\ncon riferimento al contratto con anticipo n. ${nn} del ${dmy(x.data)}, vi comunichiamo che l'autorità competente ha adottato la determinazione di aggiornamento dell'Autorizzazione Unica Ambientale${e.rif?' ('+e.rif+')':''} relativa alla modifica non sostanziale${x.auaComunicazione?' comunicata con '+x.auaComunicazione:''} e che sono state prestate le garanzie finanziarie richieste.\n\nAi sensi dell'art. 1-bis del contratto, dalla data di questa comunicazione il contratto è efficace: potete iniziare i conferimenti, previo invio della scheda di omologa del cantiere (Allegato A) con i documenti dell'art. 4.\n\nIn allegato la determinazione di aggiornamento dell'A.U.A.\n\nCordiali saluti\nCava Basalto Laghetto S.r.l.`;
   const a=document.createElement('a');a.href=`mailto:${encodeURIComponent(c.pec||c.email||'')}?subject=${encodeURIComponent(sogg)}&body=${encodeURIComponent(corpo)}`;document.body.appendChild(a);a.click();a.remove();
 }
 function raAntCondAnnullaEfficacia(id){
@@ -4027,7 +4029,7 @@ function raAntCondAnnullaEfficacia(id){
 function raAntCondProroga(id){
   const x=S.contrattiRA.find(s=>s.id===id);if(!raIsCond(x))return;
   const base=raCondTermineBase(x),pr=x.condProroga||{};
-  const body=`<div class="note">${svg(IC.calendar||IC.shield)}<div>Il termine originario è il <b>${dmy(base)}</b> (${num(x.condMesi)||6} mesi dalla firma). La proroga vale solo con un accordo scritto firmato dalle due parti prima della scadenza (art. 1-bis).</div></div>
+  const body=`<div class="note">${svg(IC.calendar||IC.shield)}<div>Il termine originario è il <b>${dmy(base)}</b> (${num(x.condMesi)||6} mesi dalla firma). La proroga vale con un accordo scritto firmato dalle due parti (art. 1-bis), anche più volte. Meglio firmarla prima della scadenza: dopo, il contratto risulterebbe già sciolto e l'accordo vale come nuovo impegno.</div></div>
     <div class="form-grid">
       <div class="field"><label>Nuovo termine</label><input id="rcp-data" type="date" value="${pr.data||raAddMonthsIso(base,3)}"></div>
       <div class="field"><label>Accordo firmato il</label><input id="rcp-acc" type="date" value="${pr.accordo||today()}"></div>
@@ -4037,7 +4039,6 @@ function raAntCondProroga(id){
   openModal('Proroga del termine · contratto '+raNum(x),body,()=>{
     const data=document.getElementById('rcp-data').value,acc=document.getElementById('rcp-acc').value;
     if(!data||data<=base){toast('Il nuovo termine deve essere successivo al '+dmy(base));return false;}
-    if(acc&&acc>raCondTermine(x)&&!pr.data){toast('L\'accordo deve essere firmato prima della scadenza del termine ('+dmy(raCondTermine(x))+')');return false;}
     x.condProroga={data,accordo:acc,note:document.getElementById('rcp-note').value.trim()};
     logAction('Contratto R.A. '+raNum(x),'termine della condizione AUA prorogato al '+dmy(data));
     persist();render();toast('Termine prorogato al '+dmy(data));setTimeout(()=>raAntScheda(x.id),0);return true;

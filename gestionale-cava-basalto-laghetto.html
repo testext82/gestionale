@@ -826,7 +826,7 @@ function openDiagnostica(){
 /* ===================== DIAGNOSTICA (Impostazioni) =====================
    Registro degli eventi salvato su questo dispositivo (ultime 300 righe): avvio, errori, sincronizzazione,
    invio degli allegati. In Impostazioni: stato dell'app, controlli sui dati, test delle funzioni, copia del rapporto. */
-const APP_BUILD='26/11/2026 11:46';
+const APP_BUILD='26/11/2026 11:52';
 const DIAG_KEY='cbl_diag_log';
 let diagSyncUltimo='';let sbUltimoOk=0;
 function diagRighe(){try{return JSON.parse(localStorage.getItem(DIAG_KEY)||'[]');}catch(e){return [];}}
@@ -3834,10 +3834,10 @@ Il Conferitore esegue lavori in più cantieri e intende conferire al Gestore le 
 Le Parti stipulano quindi un contratto con anticipo, in forma di contratto aperto, sottoposto alla condizione sospensiva dell'art. 1-bis. Il contratto fissa prezzo e quantitativo massimo, senza termine di durata, salvo la chiusura dopo [mesi] mesi senza scarichi. Il corrispettivo è fatturato per intero alla firma; si paga con un anticipo e con rate mensili sulle quantità effettivamente conferite.
 Ogni cantiere si aggiunge con la scheda di omologa dell'Allegato A, con i documenti richiesti dagli artt. 8 e 9 del D.M. 5/2/1998.
 Le premesse e l'Allegato A (scheda di omologa del cantiere) fanno parte integrante del contratto.`,
-  art1bis:`Gli effetti del contratto sono sospesi finché il Gestore non può eseguire la modifica non sostanziale dell'A.U.A. indicata nelle premesse (condizione sospensiva, art. 1353 c.c.). La condizione si avvera con l'aggiornamento dell'autorizzazione da parte dell'autorità competente oppure, se l'autorità non si esprime, con il decorso di 60 giorni dalla comunicazione di modifica (art. 6, comma 1, D.P.R. 59/2013).
-Il Gestore comunica al Conferitore via PEC l'avveramento della condizione e gli trasmette la relativa documentazione. La data di questa PEC è la data di efficacia del contratto: da essa decorrono i conferimenti, il quantitativo massimo, il termine dell'art. 3 e tutte le obbligazioni legate ai conferimenti. Fino a quella data il Gestore non accetta carichi in esecuzione del contratto.
+  art1bis:`Gli effetti del contratto sono sospesi finché il Gestore non può eseguire la modifica non sostanziale dell'A.U.A. indicata nelle premesse (condizione sospensiva, art. 1353 c.c.). La condizione si avvera quando l'autorità competente ha adottato la determinazione di aggiornamento dell'A.U.A. e il Gestore ha prestato le garanzie finanziarie eventualmente richieste (fideiussione).
+Il Gestore comunica al Conferitore via PEC l'avveramento della condizione e gli trasmette la determinazione di aggiornamento dell'A.U.A. La data di questa PEC è la data di efficacia del contratto: da essa decorrono i conferimenti, il quantitativo massimo, il termine dell'art. 3 e tutte le obbligazioni legate ai conferimenti. Fino a quella data il Gestore non accetta carichi in esecuzione del contratto.
 Sono efficaci dalla firma: il prezzo, che resta fisso; la fattura e l'anticipo (artt. 8.1 e 8.2); questo articolo.
-La condizione deve avverarsi entro [mesi condizione] mesi dalla firma, cioè entro il [termine condizione]. Le Parti possono prorogare il termine con accordo scritto firmato prima della scadenza. Il Gestore segue la procedura con diligenza e informa il Conferitore delle richieste dell'autorità e dei tempi previsti.
+La condizione deve avverarsi entro [mesi condizione] mesi dalla firma, cioè entro il [termine condizione]. Le Parti possono prorogare il termine con accordo scritto firmato prima della scadenza. Il Gestore segue con diligenza la procedura e la costituzione delle garanzie finanziarie e informa il Conferitore delle richieste dell'autorità e dei tempi previsti.
 Se la condizione non si avvera entro il termine, o se prima del termine l'autorità nega la modifica, il contratto si scioglie e non produce effetti, senza penali né risarcimenti a carico delle Parti. Entro [giorni restituzione] giorni dalla scadenza del termine, o dalla comunicazione del diniego, il Gestore restituisce l'anticipo ricevuto, senza interessi, ed emette nota di credito per l'intera fattura (art. 26, comma 2, D.P.R. 633/1972).`,
   art2:RA_ANT_TESTI.art2.replace('per tutti i cantieri insieme.','per tutti i cantieri insieme, a partire dalla data di efficacia (art. 1-bis).'),
   art3:`Il contratto non ha un termine di durata: dalla data di efficacia (art. 1-bis) resta in vigore fino al conferimento del quantitativo massimo.
@@ -3975,7 +3975,7 @@ function raCondBlocco(x){
   if(!raIsCond(x)||x.stato==='chiuso')return '';
   const eff=raCondEfficacia(x),term=raCondTermine(x),btn=(lab,fn,cls)=>`<button type="button" class="btn sm ${cls||''}" onclick="${fn}">${lab}</button>`;
   if(eff){const e=x.efficacia||{};
-    return `<div class="note">${svg(IC.shield)}<div><b>Contratto efficace dal ${dmy(eff)}</b> — modifica AUA ${e.modo==='silenzio'?'efficace per decorso dei 60 giorni (art. 6 D.P.R. 59/2013)':'aggiornata dall\'autorità'}${e.rif?': '+esc(e.rif):''}. Da questa data contano conferimenti, quantitativo e mesi senza scarichi.
+    return `<div class="note">${svg(IC.shield)}<div><b>Contratto efficace dal ${dmy(eff)}</b> — ${e.modo==='silenzio'?'modifica AUA efficace per decorso dei 60 giorni':'determinazione di aggiornamento dell\'AUA'}${e.rif?': '+esc(e.rif):''}${e.fideiussione?' · fideiussione: '+esc(e.fideiussione):''}. Da questa data contano conferimenti, quantitativo e mesi senza scarichi.
       <button class="linklike" onclick="raAntCondAnnullaEfficacia('${x.id}')">annulla</button></div></div>`;}
   const g=raGiorni(today(),term),pr=x.condProroga;
   return `<div class="note" style="${g<0?'border-color:var(--danger)':''}">${svg(IC.shield)}<div style="flex:1"><b>In attesa della modifica non sostanziale dell'AUA</b>${x.auaComunicazione?' ('+esc(x.auaComunicazione)+')':''}.
@@ -3990,21 +3990,21 @@ function raCondBlocco(x){
 function raAntCondEfficaciaDialog(id){
   const x=S.contrattiRA.find(s=>s.id===id);if(!raIsCond(x))return;
   const term=raCondTermine(x);
-  const body=`<div class="note">${svg(IC.shield)}<div>Registra la data della <b>PEC con cui comunichi al cliente</b> che la modifica dell'AUA è efficace (art. 1-bis). Da questa data partono conferimenti, quantitativo massimo e mesi senza scarichi. Termine della condizione: ${dmy(term)}.</div></div>
+  const body=`<div class="note">${svg(IC.shield)}<div>Registra la data della <b>PEC con cui comunichi al cliente</b> che è arrivata la determinazione di aggiornamento dell'AUA e che hai prestato la fideiussione eventualmente richiesta (art. 1-bis). Da questa data partono conferimenti, quantitativo massimo e mesi senza scarichi. Termine della condizione: ${dmy(term)}.</div></div>
     <div class="form-grid">
       <div class="field"><label>Data della PEC al cliente</label><input id="rce-data" type="date" value="${today()}"></div>
-      <div class="field"><label>La condizione si è avverata per</label><select id="rce-modo">
-        <option value="aggiornamento">Aggiornamento dell'AUA da parte dell'autorità</option>
-        <option value="silenzio">60 giorni senza risposta (art. 6, c. 1, D.P.R. 59/2013)</option></select></div>
-      <div class="field col2"><label>Riferimento (atto o nota dell'autorità, o data della comunicazione)</label><input id="rce-rif" placeholder="Es. determinazione n. … del …"></div>
+      <div class="field"></div>
+      <div class="field col2"><label>Determinazione di aggiornamento dell'AUA</label><input id="rce-rif" placeholder="Es. determinazione n. … del …"></div>
+      <div class="field col2"><label>Garanzia finanziaria (fideiussione)</label><input id="rce-fid" placeholder="Es. polizza n. … di … del … (se richiesta)"></div>
       <div class="field col2"><label><input type="checkbox" id="rce-mail" checked> Prepara l'email al cliente</label>
         <span class="hint">Si apre il programma di posta con il testo già scritto: allega la documentazione e invia dalla PEC.</span></div>
     </div>`;
   openModal('Comunicazione della modifica AUA · contratto '+raNum(x),body,()=>{
-    const data=document.getElementById('rce-data').value||today(),modo=document.getElementById('rce-modo').value,rif=document.getElementById('rce-rif').value.trim();
+    const data=document.getElementById('rce-data').value||today(),modo='aggiornamento',rif=document.getElementById('rce-rif').value.trim(),fid=document.getElementById('rce-fid').value.trim();
+    if(!rif){toast('Inserisci gli estremi della determinazione di aggiornamento dell\'AUA');return false;}
     if(data<(x.data||'')){toast('La data è precedente alla firma del contratto');return false;}
     if(data>term){toast(`La data è successiva al termine della condizione (${dmy(term)}): registra prima la proroga firmata`);return false;}
-    x.efficacia={data,modo,rif,registrata:today()};
+    x.efficacia={data,modo,rif,fideiussione:fid,registrata:today()};
     logAction('Contratto R.A. '+raNum(x)+' efficace',`dal ${dmy(data)} · modifica AUA${rif?' '+rif:''}`);
     persist();render();toast('Contratto efficace dal '+dmy(data)+': da ora si possono registrare i formulari');
     if(document.getElementById('rce-mail').checked)setTimeout(()=>raAntCondEmail(x.id),300);
@@ -4014,7 +4014,7 @@ function raAntCondEfficaciaDialog(id){
 function raAntCondEmail(id){
   const x=S.contrattiRA.find(s=>s.id===id);if(!x)return;const c=clienteById(x.clienteId)||{},e=x.efficacia||{},nn=raNum(x);
   const sogg=`Contratto con anticipo n. ${nn} — avveramento della condizione (modifica non sostanziale A.U.A.)`;
-  const corpo=`Spett.le ${c.ragioneSociale||x.ditta||''},\n\ncon riferimento al contratto con anticipo n. ${nn} del ${dmy(x.data)}, vi comunichiamo che la modifica non sostanziale dell'Autorizzazione Unica Ambientale${x.auaComunicazione?' ('+x.auaComunicazione+')':''} è efficace${e.modo==='silenzio'?', essendo decorsi 60 giorni dalla comunicazione senza che l\'autorità competente si sia espressa (art. 6, comma 1, D.P.R. 59/2013)':''}${e.rif?' — '+e.rif:''}.\n\nAi sensi dell'art. 1-bis del contratto, dalla data di questa comunicazione il contratto è efficace: potete iniziare i conferimenti, previo invio della scheda di omologa del cantiere (Allegato A) con i documenti dell'art. 4.\n\nIn allegato la documentazione.\n\nCordiali saluti\nCava Basalto Laghetto S.r.l.`;
+  const corpo=`Spett.le ${c.ragioneSociale||x.ditta||''},\n\ncon riferimento al contratto con anticipo n. ${nn} del ${dmy(x.data)}, vi comunichiamo che l'autorità competente ha adottato la determinazione di aggiornamento dell'Autorizzazione Unica Ambientale${e.rif?' ('+e.rif+')':''} relativa alla modifica non sostanziale${x.auaComunicazione?' comunicata con '+x.auaComunicazione:''}${e.fideiussione?', e che sono state prestate le garanzie finanziarie richieste':''}.\n\nAi sensi dell'art. 1-bis del contratto, dalla data di questa comunicazione il contratto è efficace: potete iniziare i conferimenti, previo invio della scheda di omologa del cantiere (Allegato A) con i documenti dell'art. 4.\n\nIn allegato la determinazione di aggiornamento dell'A.U.A.\n\nCordiali saluti\nCava Basalto Laghetto S.r.l.`;
   const a=document.createElement('a');a.href=`mailto:${encodeURIComponent(c.pec||c.email||'')}?subject=${encodeURIComponent(sogg)}&body=${encodeURIComponent(corpo)}`;document.body.appendChild(a);a.click();a.remove();
 }
 function raAntCondAnnullaEfficacia(id){

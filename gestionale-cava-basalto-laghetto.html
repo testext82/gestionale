@@ -826,7 +826,7 @@ function openDiagnostica(){
 /* ===================== DIAGNOSTICA (Impostazioni) =====================
    Registro degli eventi salvato su questo dispositivo (ultime 300 righe): avvio, errori, sincronizzazione,
    invio degli allegati. In Impostazioni: stato dell'app, controlli sui dati, test delle funzioni, copia del rapporto. */
-const APP_BUILD='26/11/2026 12:24';
+const APP_BUILD='26/11/2026 14:54';
 const DIAG_KEY='cbl_diag_log';
 let diagSyncUltimo='';let sbUltimoOk=0;
 function diagRighe(){try{return JSON.parse(localStorage.getItem(DIAG_KEY)||'[]');}catch(e){return [];}}
@@ -3609,18 +3609,21 @@ const RA_DEF={
   modalitaConferimento:`Terre e rocce da scavo per il recupero ambientale R10`,
   condizioni1:`Per il conferimento deve essere effettuata la caratterizzazione del rifiuto attraverso il campionamento e l'analisi chimica del materiale da laboratorio accreditato ACCREDIA a norma UNI CEI EN ISO/IEC 17025; il materiale deve essere conforme a quanto previsto dalla legge. Il test di cessione si ripete almeno ogni 12 mesi, salvo diverse prescrizioni dell'autorità competente (art. 9 del D.M. 5/2/1998), e la caratterizzazione del rifiuto almeno ogni 24 mesi (art. 8); entrambi si rifanno a ogni modifica sostanziale del processo di produzione del rifiuto. Documenti da presentare:
 Eventuali materiali di risulta trovati all'interno delle terre e rocce non devono essere caricati: dovranno essere lasciati nell'area di cantiere per il relativo smaltimento a vostro carico.
-La verifica di conformità verrà effettuata a ogni conferimento; i materiali non saranno accettati se difformi da quanto campionato e analizzato.
-Tutti i viaggi dovranno essere accompagnati dal formulario di identificazione del rifiuto (FIR) compilato a norma di legge: digitale (xFIR) tramite RENTRI quando il produttore vi è obbligato, altrimenti sul modello cartaceo del D.M. 59/2023 vidimato tramite RENTRI.
+La verifica di conformità verrà effettuata a ogni conferimento; i materiali difformi da quanto campionato e analizzato non saranno accettati: il carico respinto è annotato sul formulario e i costi di ritorno e di gestione sono a vostro carico.
+Tutti i viaggi dovranno essere accompagnati dal formulario di identificazione del rifiuto (FIR) compilato a norma di legge: digitale (xFIR) tramite RENTRI quando il produttore vi è obbligato, altrimenti sul modello cartaceo del D.M. 59/2023 vidimato tramite RENTRI. Le quantità sono quelle rilevate all'impianto (pesa o misura del carico) e riportate sul formulario: fanno fede per la fatturazione.
 Gli automezzi autorizzati allo scarico saranno esclusivamente quelli specificati nell'allegato da voi fornito, che costituirà parte integrante e sostanziale del presente contratto; la ditta di trasporto dovrà essere iscritta all'Albo Nazionale Gestori Ambientali.`,
   documenti:RA_ANT_DOCUMENTI.join('\n'),
   ubicazione:`Il sito è in Provincia di Roma, in Via Casilina Km 22,500 "Loc. Laghetto" Monte Compatri cap 00077, dal G.R.A. uscita Autostrada Roma-Napoli oppure Casilina.`,
-  garanzia:`La Soc. Cava Basalto Laghetto S.r.l. garantisce il ritiro a recupero delle quantità da voi richieste, concordate con la presente, salvo eventuali impedimenti derivanti da interruzione dell'attività di recupero.`,
-  pagamentoLegale:`Ai sensi del D.Lgs. 231/2002, con cui è stata recepita la direttiva della Comunità Europea 2000/35/CE del 29 Giugno 2000 e modificato dal D.Lgs. 192/2012, la nostra società provvederà, qualora si verificassero ritardi nel rispetto dei termini di pagamento, a fatturare gli eventuali interessi moratori maturati nei Vostri confronti, nonché la necessaria pretesa dell'ulteriore credito da questi scaturente. Non potranno essere proposte azioni od opposte eccezioni se non a pagamento regolarmente avvenuto. Resta salva la facoltà della scrivente di sospendere le forniture in caso di mancato pagamento di precedenti forniture.`,
-  condizioni2:`Le parti, con la firma del presente accordo, convengono altresì che la Soc. Cava Basalto Laghetto S.r.l., in quanto mera destinataria del carico di cui in oggetto, andrà esente da qualsivoglia responsabilità derivante da eventuali violazioni delle norme in tema di circolazione stradale in cui dovesse incorrere il committente del trasporto, il conducente e/o il proprietario dell'automezzo.
-Non possono essere apportate variazioni alla presente proposta professionale, se non preventivamente concordate e sottoscritte dalla Soc. Cava Basalto Laghetto S.r.l.
-Tale offerta non include tutto ciò che non è specificato e controfirmata per accettazione, ha valore come ordine.
-Per ogni controversia e pretesa derivante dall'interpretazione ed attuazione del presente contratto sarà competente in via esclusiva il Tribunale Ordinario di Roma.`,
-  art1341:`Ai sensi degli artt. 1341 e 1342 c.c. dichiaro di aver preso visione e di approvare specificamente le seguenti clausole: punti da 1 a 5 (condizioni per il conferimento e respingimento dei materiali non conformi); «Modalità di pagamento» (interessi moratori, nessuna azione od eccezione se non a pagamento avvenuto, facoltà di sospendere le forniture); punto 6 (esonero di responsabilità della Soc. Cava Basalto Laghetto S.r.l.); punto 9 (foro esclusivo di Roma).`,
+  garanzia:`La Soc. Cava Basalto Laghetto S.r.l. garantisce il ritiro a recupero delle quantità da voi richieste, concordate con la presente, salvo eventuali impedimenti derivanti da interruzione dell'attività di recupero e nei limiti quantitativi autorizzati dell'impianto.`,
+  pagamentoLegale:`Ai sensi del D.Lgs. 231/2002 (direttiva 2000/35/CE, modificato dal D.Lgs. 192/2012), in caso di ritardo nei pagamenti la Soc. Cava Basalto Laghetto S.r.l. fatturerà gli interessi moratori maturati e chiederà il risarcimento dell'ulteriore danno che ne deriva. Non potranno essere proposte azioni od opposte eccezioni se non a pagamento regolarmente avvenuto. Resta salva la facoltà di sospendere le forniture in caso di mancato pagamento di precedenti forniture.`,
+  condizioni2:`Il produttore del rifiuto risponde della classificazione, dell'attribuzione del codice EER e della caratterizzazione analitica (artt. 183 e 188 D.Lgs. 152/2006).
+Le parti, con la firma del presente contratto, convengono altresì che la Soc. Cava Basalto Laghetto S.r.l., in quanto mera destinataria del carico di cui in oggetto, andrà esente da qualsivoglia responsabilità derivante da eventuali violazioni delle norme in tema di circolazione stradale in cui dovesse incorrere il committente del trasporto, il conducente e/o il proprietario dell'automezzo.
+Il contratto si risolve di diritto (art. 1456 c.c.), con comunicazione via PEC della Soc. Cava Basalto Laghetto S.r.l., in caso di mancato pagamento di due fatture alla scadenza o di ripetuti conferimenti non conformi.
+Il contratto vale fino al conferimento delle quantità concordate e comunque non oltre 12 mesi dalla firma.
+Il contratto si può modificare solo per iscritto, con la firma della Soc. Cava Basalto Laghetto S.r.l. Non comprende nulla che non sia specificato e, firmato per accettazione, vale come ordine.
+Le parti trattano i dati personali dell'altra solo per eseguire il contratto e per gli obblighi di legge, ai sensi del Reg. UE 2016/679.
+Per ogni controversia e pretesa derivante dall'interpretazione ed esecuzione del presente contratto sarà competente in via esclusiva il Tribunale Ordinario di Roma.`,
+  art1341:`Ai sensi degli artt. 1341 e 1342 c.c. dichiaro di aver preso visione e di approvare specificamente le seguenti clausole: punti da 1 a 5 (condizioni per il conferimento, respingimento dei materiali non conformi e relativi costi); «Modalità di pagamento» (interessi moratori, nessuna azione od eccezione se non a pagamento avvenuto, facoltà di sospendere le forniture); punto 7 (esonero di responsabilità della Soc. Cava Basalto Laghetto S.r.l.); punto 8 (risoluzione di diritto); punto 12 (foro esclusivo di Roma).`,
   notaIva:`(IVA 22% inclusa)`,
   piePagina:`Cava Basalto Laghetto S.r.l. — Costruzioni edili e pavimentazioni stradali e recupero ambientale`
 };
@@ -4682,7 +4685,7 @@ const RA_MOD_DEF={
 };
 const RA_STD_CAMPI=[['titolo','Titolo'],['sottotitolo','Sottotitolo'],['oggetto','Oggetto',3],['datiR10','Dati recupero ambientale R10',3],
   ['modalitaConferimento','Modalità per il conferimento del rifiuto',2],['condizioni1','Condizioni punti 1-5 (una per riga)',10,'L\'elenco dei documenti si stampa sotto il punto che finisce con i due punti «:».'],['documenti','Punto 1 — Documenti da presentare (uno per riga)',9],['ubicazione','Ubicazione del sito di conferimento',2],
-  ['garanzia','Garanzia di ritiro',2],['pagamentoLegale','Testo pagamenti (D.Lgs. 231/2002)',5],['condizioni2','Condizioni punti 6-9 (una per riga)',7],
+  ['garanzia','Garanzia di ritiro',2],['pagamentoLegale','Testo pagamenti (D.Lgs. 231/2002)',5],['condizioni2','Condizioni dal punto 6 in poi (una per riga)',9],
   ['art1341','Dichiarazione art. 1341 c.c.',3],['piePagina','Piè di pagina']];
 Object.assign(RA_MOD_DEF,{
   md2:{
@@ -5026,7 +5029,7 @@ function openContrattoRAStd(id){
       <div class="field col2"><label>Ubicazione del sito di conferimento</label><textarea id="ra-ubic" rows="2">${esc(x.ubicazione||'')}</textarea></div>
       <div class="field col2"><label>Garanzia di ritiro</label><textarea id="ra-gar" rows="2">${esc(x.garanzia||'')}</textarea></div>
       <div class="field col2"><label>Testo pagamenti (D.Lgs. 231/2002)</label><textarea id="ra-paglegale" rows="4">${esc(x.pagamentoLegale||'')}</textarea></div>
-      <div class="field col2"><label>Condizioni punti 6-9 (una per riga)</label><textarea id="ra-cond2" rows="6">${esc(x.condizioni2||'')}</textarea></div>
+      <div class="field col2"><label>Condizioni dal punto 6 in poi (una per riga)</label><textarea id="ra-cond2" rows="9">${esc(x.condizioni2||'')}</textarea></div>
       <div class="field col2"><label>Dichiarazione art. 1341 c.c.</label><textarea id="ra-1341" rows="3">${esc(x.art1341||'')}</textarea></div>
       <div class="field col2"><label>Piè di pagina</label><input id="ra-pie" value="${esc(x.piePagina||'')}"></div>
 
@@ -5064,6 +5067,7 @@ function openContrattoRAStd(id){
   raAttList();
 }
 function raLinea(v,w){return `<span class="ra-fill" style="min-width:${w||120}px">${esc(v||'')}</span>`;}
+function raNumPunti(txt){return String(txt||'').split('\n').map(s=>s.trim()).filter(Boolean).length||5;}
 function raPunti(txt,start,docs){
   const items=String(txt||'').split('\n').map(s=>s.trim()).filter(Boolean);
   const sub=String(docs||'').split('\n').map(s=>s.trim()).filter(Boolean);
@@ -5149,7 +5153,7 @@ function printContrattoRA(id,recBianco){
     <div class="ra-h2">MODALITÀ DI PAGAMENTO</div>
     <div class="ra-row">Pagato con la seguente modalità: ${raLinea(x.pagamento,300)}</div>
     <p class="ra-p">${esc(x.pagamentoLegale)}</p>
-    ${raPunti(x.condizioni2,6)}
+    ${raPunti(x.condizioni2,raNumPunti(x.condizioni1)+1)}
     <div class="ra-firma">PER ACCETTAZIONE — Soc. Cava Basalto Laghetto S.r.l.</div>
     <div class="ra-firma-line"></div><div class="ra-firma-cap">(firma del cliente)</div>
     <p class="ra-p">${esc(x.art1341)}</p>
@@ -7948,7 +7952,7 @@ function pdfContrattoRA(x){
   pdfH2(pdf,fl,'Modalità di pagamento');
   pdfPara(pdf,fl,`Pagato con la seguente modalità: ${x.pagamento||'______________________'}`,{size:9});fl.gap(1);
   pdfPara(pdf,fl,x.pagamentoLegale,{size:9});fl.gap(2);
-  pdfLista(pdf,fl,x.condizioni2,6);
+  pdfLista(pdf,fl,x.condizioni2,raNumPunti(x.condizioni1)+1);
   // firme (non spezzate)
   const firma=()=>{fl.ensure(26);fl.gap(4);
     pdfPara(pdf,fl,'PER ACCETTAZIONE — Soc. Cava Basalto Laghetto S.r.l.',{size:9,bold:true});

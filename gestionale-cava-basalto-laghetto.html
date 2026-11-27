@@ -826,7 +826,7 @@ function openDiagnostica(){
 /* ===================== DIAGNOSTICA (Impostazioni) =====================
    Registro degli eventi salvato su questo dispositivo (ultime 300 righe): avvio, errori, sincronizzazione,
    invio degli allegati. In Impostazioni: stato dell'app, controlli sui dati, test delle funzioni, copia del rapporto. */
-const APP_BUILD='26/11/2026 15:09';
+const APP_BUILD='27/11/2026 10:45';
 const DIAG_KEY='cbl_diag_log';
 let diagSyncUltimo='';let sbUltimoOk=0;
 function diagRighe(){try{return JSON.parse(localStorage.getItem(DIAG_KEY)||'[]');}catch(e){return [];}}
@@ -4962,11 +4962,11 @@ function raAntScadItems(){
   const out=[];
   (S.contrattiRA||[]).filter(raIsAnt).forEach(x=>{
     let st;try{st=raAntStato(x);}catch(e){return;}
-    const cli=clienteName(x.clienteId)||x.ditta||'',nn=raNum(x),orig='Contratto R.A. con anticipo';
-    if(!x.anticipoIncassato&&st.k.ant>0)out.push({dir:'incasso',data:x.data||'',importo:st.k.ant,desc:`Anticipo contratto R.A. ${nn}`,contro:cli,origine:orig,kind:'raAnt',id:x.id});
-    st.mesi.forEach(r=>{if(r.rata>0&&!r.pagata)out.push({dir:'incasso',data:r.scad,importo:r.rata,desc:`Rata ${raMeseLab(r.m)} · contratto R.A. ${nn} (${qty(r.tEff)} t)`,contro:cli,origine:orig,kind:'raRata',id:x.id+'|'+r.m});});
+    const cli=clienteName(x.clienteId)||x.ditta||'',nn=raNum(x),orig='Contratto R.A. con anticipo',fat=raAntFattura(x),dDoc=(fat&&fat.data)||x.data||'',dLab=fat&&fat.data?'':'contratto';
+    if(!x.anticipoIncassato&&st.k.ant>0)out.push({dir:'incasso',data:x.data||'',dataDoc:dDoc,dataDocLab:dLab,importo:st.k.ant,desc:`Anticipo contratto R.A. ${nn}`,contro:cli,origine:orig,kind:'raAnt',id:x.id});
+    st.mesi.forEach(r=>{if(r.rata>0&&!r.pagata)out.push({dir:'incasso',data:r.scad,dataDoc:dDoc,dataDocLab:dLab,importo:r.rata,desc:`Rata ${raMeseLab(r.m)} · contratto R.A. ${nn} (${qty(r.tEff)} t)`,contro:cli,origine:orig,kind:'raRata',id:x.id+'|'+r.m});});
     if(x.stato==='chiuso'&&x.chiusura&&num(x.chiusura.rest)>0&&!x.chiusura.restituito)
-      out.push({dir:'pagamento',data:x.chiusura.scadRest||'',importo:num(x.chiusura.rest),desc:`Restituzione anticipo · contratto R.A. ${nn}`,contro:cli,origine:orig,kind:'raRest',id:x.id});
+      out.push({dir:'pagamento',data:x.chiusura.scadRest||'',dataDoc:x.chiusura.data||'',dataDocLab:'chiusura',importo:num(x.chiusura.rest),desc:`Restituzione anticipo · contratto R.A. ${nn}`,contro:cli,origine:orig,kind:'raRest',id:x.id});
   });
   return out;
 }
@@ -5538,9 +5538,9 @@ function stampaRegistroRif(){
 const filtriSC={dir:'',stato:''};
 function scadItems(){
   const out=[];const raEx=raAntFattureEscluse();
-  S.fatture.filter(f=>!f.incassata&&!raEx.fi.has(f.id)).forEach(f=>out.push({dir:'incasso',data:f.scadenza||'',importo:num(f.totale),desc:`Fattura ${f.numero}/${f.anno}`,contro:clienteName(f.clienteId)||'',origine:'Fattura interna',kind:'fint',id:f.id,feId:(fatturaFE(f)||{}).id||''}));
+  S.fatture.filter(f=>!f.incassata&&!raEx.fi.has(f.id)).forEach(f=>out.push({dir:'incasso',data:f.scadenza||'',dataDoc:f.data||'',importo:num(f.totale),desc:`Fattura ${f.numero}/${f.anno}`,contro:clienteName(f.clienteId)||'',origine:'Fattura interna',kind:'fint',id:f.id,feId:(fatturaFE(f)||{}).id||''}));
   S.fattureEl.filter(f=>!f.pagata&&!raEx.fe.has(f.id)).forEach(f=>{const dir=f.tipo==='attiva'?'incasso':'pagamento';const scad=(f.pagamenti&&f.pagamenti[0]&&f.pagamenti[0].scadenza)?f.pagamenti[0].scadenza:(f.data||'');
-    out.push({dir,data:scad,importo:feResiduo(f),desc:`Fattura ${f.numero||''}`,contro:f.controparteNome||'',origine:'Fattura elettronica',kind:'fel',id:f.id,feId:f.id});});
+    out.push({dir,data:scad,dataDoc:f.data||'',importo:feResiduo(f),desc:`Fattura ${f.numero||''}`,contro:f.controparteNome||'',origine:'Fattura elettronica',kind:'fel',id:f.id,feId:f.id});});
   // IVA da versare (liquidazione periodica chiusa, non ancora registrata come versata, scadenza da oggi in poi)
   try{const t=today();[String(+t.slice(0,4)-1),t.slice(0,4)].forEach(a=>ivaLiqCalc(a).forEach(p=>{
     if(p.daVersare>0&&!p.versato&&p.a<t&&p.scad>=t)out.push({dir:'pagamento',data:p.scad,importo:p.daVersare,desc:`IVA ${p.lab} ${a} · F24 cod. ${p.codice}${p.annuale?' (saldo annuale)':''}`,contro:'Erario',origine:'Liquidazione IVA',kind:'iva',id:p.k});}));}catch(e){}
@@ -5587,11 +5587,11 @@ function renderScadenzario(c){
       ${scadItems().length===0
         ? emptyState('card','Nessuna scadenza aperta','Le fatture interne non incassate e le fatture elettroniche non saldate compaiono qui come incassi e pagamenti attesi.')
         : rows.length===0 ? emptyState('search','Nessun risultato','Cambia i filtri.')
-        : `<table><thead><tr><th>Scadenza</th><th>Tipo</th><th>Documento</th><th>Controparte</th><th>Origine</th><th class="num">Importo</th><th></th></tr></thead>
+        : `<table><thead><tr><th>Scadenza</th><th>Tipo</th><th>Documento</th><th>Data documento</th><th>Controparte</th><th>Origine</th><th class="num">Importo</th><th></th></tr></thead>
           <tbody>${rows.map(r=>`<tr>
             <td>${cell(r)}</td>
             <td><span class="pill ${r.dir==='incasso'?'ok':'danger'}">${r.dir==='incasso'?'Incasso':'Pagamento'}</span></td>
-            <td>${esc(r.desc)}${r.feId?`<div class="sub"><span class="golink" onclick="goHighlight('fattureEl','fe-${r.feId}')">vedi fattura elettronica ↗</span></div>`:''}${r.kind==='iva'?`<div class="sub"><span class="golink" onclick="liqAnno='${r.id.slice(0,4)}';liqSel='${r.id}';go('liqIva')">apri liquidazione ↗</span></div>`:''}${/^ra/.test(r.kind||'')?`<div class="sub"><span class="golink" onclick="go('contrattiRA');setTimeout(()=>raAntScheda('${String(r.id).split('|')[0]}'),30)">apri contratto ↗</span></div>`:''}</td><td>${esc(r.contro||'—')}</td><td class="sub">${esc(r.origine)}</td>
+            <td>${esc(r.desc)}${r.feId?`<div class="sub"><span class="golink" onclick="goHighlight('fattureEl','fe-${r.feId}')">vedi fattura elettronica ↗</span></div>`:''}${r.kind==='iva'?`<div class="sub"><span class="golink" onclick="liqAnno='${r.id.slice(0,4)}';liqSel='${r.id}';go('liqIva')">apri liquidazione ↗</span></div>`:''}${/^ra/.test(r.kind||'')?`<div class="sub"><span class="golink" onclick="go('contrattiRA');setTimeout(()=>raAntScheda('${String(r.id).split('|')[0]}'),30)">apri contratto ↗</span></div>`:''}</td><td>${r.dataDoc?dmy(r.dataDoc):'<span class="sub">—</span>'}${r.dataDoc&&r.dataDocLab?`<div class="sub">${esc(r.dataDocLab)}</div>`:''}</td><td>${esc(r.contro||'—')}</td><td class="sub">${esc(r.origine)}</td>
             <td class="num strong">€ ${eur(r.importo)}</td>
             <td class="actions"><button class="btn sm" onclick="scadSaldaItem('${r.kind}','${r.id}')">${r.kind==='iva'?'Segna versata':'Segna '+(r.dir==='incasso'?'incassata':'pagata')}</button></td>
           </tr>`).join('')}</tbody></table>`}
